@@ -13,8 +13,6 @@ mode. Dictation is unavailable in the Steam interface and VR games.
 
 ## Install on your Frame
 
-Run this on your Frame:
-
 1. Open **Desktop**, then open **Konsole** (the terminal).
 2. Paste this command and press Enter:
 
@@ -51,61 +49,16 @@ Firefox. These characters are not yet supported inside the nested Desktop.
 
 Click the joystick during recording to cancel. After text appears, **A** submits
 and releasing **B** clears; the left D-pad right/left do the same. Submit and clear are
-available briefly after dictation and stop when you change focus. Default Desktop
-B also inserts a space; Frame Voice includes that space when clearing. Disable
-**B also types a space in Desktop** if you customize Steam’s B mapping. Nothing submits
+available briefly after dictation and stop when you change focus. Nothing submits
 automatically.
 
-## Change settings or free space
-
-Open the tray icon and choose **Configure…** to open **Frame Voice Configuration**:
-
-- **General:** tones, text delivery, and recording options.
-- **Transcription:** Groq or local transcription, language, and downloaded models.
-- **Controllers:** enable each hand and choose submit/clear buttons.
-
-Make changes across tabs, then use **Save settings** in the shared footer.
-Save becomes available when you change a setting.
-
-To switch transcription paths, choose the new path and **Save settings**. Your
-Groq API key stays saved when switching to local transcription.
-
-To free model storage without uninstalling, use **Delete…** under Downloaded
-models. The active model is protected: save another transcription path first.
-Deletion asks for confirmation; selecting that model later downloads it again.
-
-To uninstall, open **General** and click **Uninstall…** at the bottom.
-The confirmation offers separate **Keep current configuration** and
-**Keep downloaded models** choices. Uncheck both to remove the
-app's settings, saved keys, downloaded models, and app data. Installation backups
-are removed during uninstall. Older, separate voice tools and their models are
-left alone.
-
-Under Groq, **Edit cleanup prompt…** opens an editor in the settings window.
-Use **Apply**, then **Save settings** to save your instructions. **Reset to default**
-restores the shipped prompt in the editor. Your custom prompt stays on your Frame.
-Groq notification and optional spoken-slash settings are there too.
-
-The tray shows a blue microphone while dictation runs and a red crossed-out
-microphone when paused or stopping. Feedback audio is warmed during the leading
-tap and reused for start, stop, and cancel cues; it closes after the job finishes.
-The small microphone badge waits for audio startup, then grows toward the start
-tone. Wait for the tone before speaking.
-
-Quiet recordings are checked for voice before transcription. Room noise and
-cue tones should cancel without inserting text. Groq results with weak decoding
-or high no-speech scores also cancel; genuine short phrases remain valid.
+Open **Configure…** in the tray to customize Frame Voice. See the
+[settings guide](docs/SETTINGS.md) for the General, Transcription, and Controllers tabs.
 
 ## Updates
 
-Open **Configure… → General → Check for updates** to see your installed version
-and the latest stable release. Save pending settings first, then choose **Update…**
-to open the installer. Updates preserve saved configuration, API keys, and models.
-Checks happen only when requested.
-
-For terminal use, `frame-voice --version` shows the version and build revision;
-`frame-voice --check-updates --json` returns machine-readable update status.
-Run `~/.local/share/frame-voice/update.sh --tui` for a guided terminal update.
+Use **Configure… → General → Check for updates**. Updates preserve saved settings,
+API keys, and downloaded models. See [updating Frame Voice](docs/SETTINGS.md#updates).
 
 ## If something does not work
 
@@ -131,6 +84,11 @@ interactive dialogs:
 For Groq, use `--backend groq --language en --groq-key-file /path/to/key`.
 Noninteractive setup requires input permissions to be configured already.
 
+`frame-voice --version` shows the version and build revision.
+`frame-voice --check-updates --json` returns update status; use
+`~/.local/share/frame-voice/update.sh --tui` for a guided terminal update.
+See the [configuration reference](docs/CONFIGURATION.md) for advanced settings.
+
 [Installation and removal](docs/INSTALLATION.md) ·
-[Configuration](docs/CONFIGURATION.md) ·
+[Settings by tab](docs/SETTINGS.md) ·
 [Builds and release channels](docs/DISTRIBUTION.md) · [MIT license](LICENSE)

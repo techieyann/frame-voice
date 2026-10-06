@@ -1,22 +1,7 @@
-# Configuration and controls
+# Configuration reference
 
-Choose **Configure…** in the Desktop tray for the dark **Frame Voice Configuration** window with General,
-Transcription, and Controllers tabs. Save settings in the shared footer applies your changes
-and restarts dictation. In Transcription, choose Groq, Local Fast, or Local Balanced.
-Groq shows its API key and cleanup controls; local choices download and verify their
-models as needed, with the current backend retained if preparation fails.
-Your Groq API key is retained when switching to a local path. The **Downloaded
-models** section shows sizes and lets you delete unused downloads without
-uninstalling. Save another path first to unlock deletion of the active model;
-deletion requires confirmation. Selecting that model later downloads it again.
-
-Save stays disabled until values differ from the saved configuration, and disables
-again after a successful save. **Uninstall…** at the bottom of General asks for confirmation.
-The dialog offers **Keep current configuration** and
-**Keep downloaded models**, both checked by default. Unchecking both removes the
-app's settings, API keys, downloaded models, app data, and installation backups.
-Legacy voice tools and their models are retained. On systems without libadwaita,
-the fallback dialog offers the same sections sequentially.
+For the configuration window, read [Settings by tab](SETTINGS.md). This reference
+covers terminal configuration, advanced options, and diagnostics.
 
 You can also edit
 `~/.config/frame-voice/env`. Settings are literal `KEY=VALUE`, never shell commands.
