@@ -1,0 +1,12 @@
+[Unit]
+Description=Frame Voice input helper
+
+[Service]
+ExecStart=%h/.local/share/frame-voice/bin/ydotoold --socket-path=%t/frame-voice-ydotool.sock --socket-perm=0600 --mouse-off
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

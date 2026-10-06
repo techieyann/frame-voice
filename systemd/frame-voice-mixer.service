@@ -1,0 +1,11 @@
+[Unit]
+Description=Frame Voice microphone setup
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/frame-voice/mic-gain.sh
+RemainAfterExit=yes
+TimeoutStartSec=35
+
+[Install]
+WantedBy=default.target

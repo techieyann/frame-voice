@@ -1,0 +1,15 @@
+[Unit]
+Description=Frame Voice tray in the nested SteamOS Desktop
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/frame-voice/tray-session.py
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=5
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

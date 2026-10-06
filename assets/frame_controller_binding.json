@@ -1,0 +1,26 @@
+{
+  "action_manifest_version": 0,
+  "bindings": {
+    "/actions/voicedict": {
+      "sources": [
+        { "inputs": { "touch": { "output": "/actions/voicedict/in/touch_left" },
+                      "click": { "output": "/actions/voicedict/in/cancel" } },
+          "mode": "joystick", "path": "/user/hand/left/input/thumbstick" },
+        { "inputs": { "touch": { "output": "/actions/voicedict/in/touch_right" },
+                      "click": { "output": "/actions/voicedict/in/cancel" } },
+          "mode": "joystick", "path": "/user/hand/right/input/thumbstick" },
+        { "inputs": { "click": { "output": "/actions/voicedict/in/submit" } },
+          "mode": "button", "path": "/user/hand/right/input/a" },
+        { "inputs": { "click": { "output": "/actions/voicedict/in/clear" } },
+          "mode": "button", "path": "/user/hand/right/input/b" },
+        { "inputs": { "click": { "output": "/actions/voicedict/in/submit" } },
+          "mode": "button", "path": "/user/hand/left/input/dpad_right" },
+        { "inputs": { "click": { "output": "/actions/voicedict/in/clear" } },
+          "mode": "button", "path": "/user/hand/left/input/dpad_left" }
+      ]
+    }
+  },
+  "category": "steamvr_input",
+  "controller_type": "frame_controller",
+  "interaction_profile": "/interaction_profiles/valve/frame_controller_valve"
+}

@@ -1,0 +1,16 @@
+[package]
+name = "frame-voice-tray"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Nested SteamOS Desktop status and controls for Frame Voice"
+license = "MIT"
+
+# Separate crate: tray dependencies never enter the headless daemon.
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "=0.3.6", features = ["blocking"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
