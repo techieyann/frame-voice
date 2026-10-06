@@ -1,0 +1,36 @@
+{
+  "default_bindings": [
+    {
+      "controller_type": "frame_controller",
+      "binding_url": "frame_controller_binding.json"
+    }
+  ],
+  "actions": [
+    {
+      "name": "/actions/voicedict/in/touch_left",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/voicedict/in/touch_right",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/voicedict/in/submit",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/voicedict/in/clear",
+      "type": "boolean"
+    },
+    {
+      "name": "/actions/voicedict/in/cancel",
+      "type": "boolean"
+    }
+  ],
+  "action_sets": [
+    {
+      "name": "/actions/voicedict",
+      "usage": "single"
+    }
+  ]
+}

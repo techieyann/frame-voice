@@ -1,0 +1,85 @@
+name: ARM64 distribution
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Bundle version (build only; does not publish a release)
+        required: true
+        default: v0.1.0-experimental.1
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: arm64-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 30
+    env:
+      OPENVR_INCLUDE_DIR: ${{ github.workspace }}/.build/openvr/headers
+    steps:
+      - uses: actions/checkout@v7
+      - name: OpenVR SDK headers
+        uses: actions/checkout@v7
+        with:
+          repository: ValveSoftware/openvr
+          ref: v2.15.6
+          path: .build/openvr
+          persist-credentials: false
+      - name: Install compiler and Rust
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+      - name: Verify
+        run: |
+          cargo fmt --check
+          cargo test --locked --features openvr
+          cargo clippy --locked --features openvr --all-targets -- -D warnings
+          cargo fmt --manifest-path tray/Cargo.toml --check
+          cargo test --locked --manifest-path tray/Cargo.toml
+          cargo clippy --locked --manifest-path tray/Cargo.toml --all-targets -- -D warnings
+          python3 -m unittest discover -s tests -p '*.py'
+          c++ -O2 -std=c++17 -Wall -Wextra -Werror tests/badge_icons.cpp -o /tmp/badge-icons-test
+          /tmp/badge-icons-test
+      - name: Build native glibc binaries
+        run: ./build-local.sh
+      - name: Package channel
+        env:
+          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="$GITHUB_REF_NAME"
+          elif [[ -n "$REQUESTED_VERSION" ]]; then
+            version="$REQUESTED_VERSION"
+          else
+            base=$(python3 -c 'import re; from pathlib import Path; print(re.search(r"^version\s*=\s*\"([^\"]+)\"", Path("Cargo.toml").read_text(), re.M)[1])')
+            version="v${base}-experimental.${GITHUB_RUN_NUMBER}"
+          fi
+          python3 tools/package-release.py --tag "$version" --openvr-license .build/openvr/LICENSE
+      - uses: actions/upload-artifact@v7
+        with:
+          name: frame-voice-arm64
+          path: dist/*
+          compression-level: 0
+          if-no-files-found: error
+      - name: Publish channel
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$RELEASE_TAG" == *-experimental.* ]]; then
+            gh release create "$RELEASE_TAG" dist/*.tar.gz dist/SHA256SUMS --verify-tag --prerelease --latest=false --generate-notes
+          else
+            gh release create "$RELEASE_TAG" dist/*.tar.gz dist/SHA256SUMS --verify-tag --latest --generate-notes
+          fi

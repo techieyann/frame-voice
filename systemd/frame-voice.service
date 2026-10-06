@@ -1,0 +1,27 @@
+[Unit]
+Description=Steam Frame controller voice dictation
+# No ordering after ydotoold.service: the legacy ydotoold unit is After=default.target,
+# so ordering + WantedBy=default.target forms a boot ordering cycle and systemd drops
+# this unit's start job. ydotool is only needed later, after a gesture.
+After=graphical-session.target voice-mixer.service
+Wants=ydotoold.service voice-mixer.service
+Conflicts=vr-actions-daemon.service voice-hotkey.service voice-always.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/frame-voice
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Restart even on a clean exit so a runtime re-bind (or any unexpected exit)
+# recovers without a manual `systemctl restart`.
+Restart=always
+RestartSec=2
+# The Rust config loader reads the old and new config; no shell evaluation.
+# Kill the whole cgroup, including capture/playback/whisper, during shutdown.
+KillMode=control-group
+TimeoutStopSec=50
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

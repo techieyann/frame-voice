@@ -1,0 +1,31 @@
+[package]
+name = "frame-voice"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Controller-triggered Steam Frame dictation"
+default-run = "frame-voice"
+
+[[bin]]
+name = "frame-voice-paste"
+path = "src/bin/frame_voice_paste.rs"
+
+[features]
+default = []
+openvr = []
+
+[dependencies]
+anyhow = "1"
+x11rb = "0.13"
+libc = "0.2"
+serde_json = "1"
+tempfile = "3"
+ureq = { version = "3.4", default-features = false, features = ["rustls"] }
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
