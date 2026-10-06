@@ -86,6 +86,39 @@ fn eligible(start: &Snapshot, current: &Snapshot, control: &Control) -> bool {
 fn armed(until: Option<Instant>, now: Instant) -> bool {
     until.is_some_and(|t| now < t)
 }
+struct PendingClear {
+    focus: Snapshot,
+    deadline: Instant,
+    released_at: Option<Instant>,
+}
+fn take_released_clear(
+    pending: &mut Option<PendingClear>,
+    now: Instant,
+    available: bool,
+    held: bool,
+    current: &Snapshot,
+) -> Option<Snapshot> {
+    let action = pending.as_mut()?;
+    if !available
+        || now >= action.deadline
+        || current.revision != action.focus.revision
+        || current.focus != action.focus.focus
+        || current.focus.is_none()
+    {
+        *pending = None;
+        return None;
+    }
+    if held {
+        action.released_at = None;
+        return None;
+    }
+    let released = *action.released_at.get_or_insert(now);
+    // Let Desktop process the controller release before keyboard injection.
+    if now.saturating_duration_since(released) < Duration::from_millis(30) {
+        return None;
+    }
+    pending.take().map(|action| action.focus)
+}
 struct Job {
     feedback: Option<frame_voice::feedback::Lease>,
     control: Control,
@@ -297,6 +330,7 @@ fn daemon(c: Config) -> Result<()> {
     let mut revision = 0;
     let mut focus = Snapshot::default();
     let mut actions_armed_until: Option<Instant> = None;
+    let mut pending_clear: Option<PendingClear> = None;
     let mut badge_hand: i32 = -1;
     let mut cancel_until: Option<Instant> = None;
     // When the hold releases, the processing icon only starts after this short
@@ -380,6 +414,7 @@ fn daemon(c: Config) -> Result<()> {
             baseline = true;
             revision = focus.revision;
             actions_armed_until = None;
+            pending_clear = None;
             let _ = vr.badge(BADGE_HIDDEN, -1);
         }
         if focus.focus.is_none() {
@@ -414,6 +449,7 @@ fn daemon(c: Config) -> Result<()> {
             );
         }
         if baseline || input_invalidated(&active, &snapshot.active, owning_hand) {
+            pending_clear = None;
             if debug {
                 eprintln!(
                     "availability: active={:?} state={:?}",
@@ -471,6 +507,7 @@ fn daemon(c: Config) -> Result<()> {
                 snapshot.state[0] != 0 || snapshot.state[1] != 0,
             ) {
                 Some(Event::Arm) => {
+                    pending_clear = None;
                     if debug {
                         eprintln!("gesture: arm");
                     }
@@ -659,7 +696,16 @@ fn daemon(c: Config) -> Result<()> {
                     let _ = vr.badge(BADGE_HIDDEN, -1);
                     let now = context.snapshot();
                     if now.revision == focus.revision && now.focus.is_some() {
-                        if let Err(e) =
+                        if matches!(output, Output::Clear) {
+                            // The same B press reaches the Desktop too. Inject
+                            // only after release so its first Backspace isn't
+                            // consumed by controller/keyboard focus switching.
+                            pending_clear = Some(PendingClear {
+                                focus: now,
+                                deadline: Instant::now() + Duration::from_secs(5),
+                                released_at: None,
+                            });
+                        } else if let Err(e) =
                             inject::send_guarded(&c, &output, now.focus.as_ref(), || {
                                 context.revision() == now.revision
                             })
@@ -672,6 +718,22 @@ fn daemon(c: Config) -> Result<()> {
             }
         } else {
             actions_armed_until = None;
+        }
+        if let Some(target) = take_released_clear(
+            &mut pending_clear,
+            Instant::now(),
+            snapshot.active[3] != 0,
+            snapshot.state[3] != 0,
+            &context.snapshot(),
+        ) {
+            if debug {
+                eprintln!("controller clear: released and settled");
+            }
+            if let Err(e) = inject::send_guarded(&c, &Output::Clear, target.focus.as_ref(), || {
+                context.matches(&target)
+            }) {
+                eprintln!("controller clear: {e}");
+            }
         }
         // Process fresh action availability and A/B cancellation before accepting
         // an ASR result that may have completed during the same poll interval.
@@ -740,7 +802,7 @@ fn daemon(c: Config) -> Result<()> {
         previous = snapshot.state;
         inject::reap_helpers();
         thread::sleep(cadence::input_interval(
-            gesture.engaged(),
+            gesture.engaged() || pending_clear.is_some(),
             snapshot.active[0] != 0 || snapshot.active[1] != 0,
         ));
     }
@@ -946,6 +1008,63 @@ mod tests {
             activation_elapsed(&mut warm, held + Duration::from_millis(150), true),
             Duration::from_millis(150)
         );
+    }
+    #[test]
+    fn clear_waits_for_release_and_settle_and_cancels_on_stale_context() {
+        let now = Instant::now();
+        let focus = Snapshot {
+            revision: 7,
+            focus: Some(frame_voice::context::Focus {
+                display: ":0".into(),
+                window: 10,
+                class: String::new(),
+            }),
+        };
+        let new_action = || {
+            Some(PendingClear {
+                focus: focus.clone(),
+                deadline: now + Duration::from_secs(5),
+                released_at: None,
+            })
+        };
+        let mut pending = new_action();
+        assert!(take_released_clear(&mut pending, now, true, true, &focus).is_none());
+        assert!(take_released_clear(&mut pending, now, true, false, &focus).is_none());
+        assert!(take_released_clear(
+            &mut pending,
+            now + Duration::from_millis(29),
+            true,
+            false,
+            &focus
+        )
+        .is_none());
+        assert!(take_released_clear(
+            &mut pending,
+            now + Duration::from_millis(30),
+            true,
+            false,
+            &focus
+        )
+        .is_some());
+        assert!(pending.is_none());
+        let mut changed = focus.clone();
+        changed.revision += 1;
+        pending = new_action();
+        assert!(take_released_clear(&mut pending, now, true, false, &changed).is_none());
+        assert!(pending.is_none());
+        pending = new_action();
+        assert!(take_released_clear(&mut pending, now, false, false, &focus).is_none());
+        assert!(pending.is_none());
+        pending = new_action();
+        assert!(take_released_clear(
+            &mut pending,
+            now + Duration::from_secs(5),
+            true,
+            false,
+            &focus
+        )
+        .is_none());
+        assert!(pending.is_none());
     }
     #[test]
     fn action_window_expires_and_defaults_closed() {

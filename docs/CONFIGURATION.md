@@ -66,7 +66,7 @@ recording. A plain hold does nothing. Click the stick during recording to cancel
 The blue microphone grows during startup; the spinning gear indicates processing;
 the red crossed-out mic indicates cancellation or insufficient speech.
 
-After successful dictation, A submits and B clears; the left D-pad right/left
+After successful dictation, A submits and B clears after the button is released; the left D-pad right/left
 provide submit/clear. These actions expire after ten seconds or a focus change.
 Unknown targets refuse clear rather than guessing. Speech commands match exact
 whole utterances: "submit", "send", "enter"; "scratch that", "clear", "undo";

@@ -50,7 +50,7 @@ Firefox. These characters are not yet supported inside the nested Desktop.
 4. Lift your thumb to finish. Wait for the transcription to appear.
 
 Click the joystick during recording to cancel. After text appears, **A** submits
-and **B** clears; the left D-pad right/left do the same. Submit and clear are
+and releasing **B** clears; the left D-pad right/left do the same. Submit and clear are
 available briefly after dictation and stop when you change focus. Nothing submits
 automatically.
 
