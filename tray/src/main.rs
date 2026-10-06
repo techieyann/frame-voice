@@ -1,4 +1,5 @@
 #[cfg(any(target_os = "linux", test))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod control;
 
 #[cfg(target_os = "linux")]
@@ -20,7 +21,6 @@ mod desktop {
         Restart,
         Config,
         Configure,
-        ConfigureControllers,
         Logs,
         Folder,
         Hide,
@@ -59,13 +59,22 @@ mod desktop {
             self.icons.clone()
         }
         fn icon_name(&self) -> String {
-            match self.state.active.as_str() {
-                "active" => "frame-voice-active",
-                "inactive" => "frame-voice-stopped",
-                "activating" | "deactivating" | "reloading" => "frame-voice-processing",
-                _ => "frame-voice-failed",
-            }
-            .into()
+            // Supply pixels directly so desktop SVG/theme caches cannot retain the active mic.
+            String::new()
+        }
+        fn icon_pixmap(&self) -> Vec<ksni::Icon> {
+            let data: &[u8] = match self.state.active.as_str() {
+                "active" => include_bytes!("../../assets/icons/frame-voice-active.argb"),
+                "activating" | "reloading" => {
+                    include_bytes!("../../assets/icons/frame-voice-processing.argb")
+                }
+                _ => include_bytes!("../../assets/icons/frame-voice-stopped.argb"),
+            };
+            vec![ksni::Icon {
+                width: 64,
+                height: 64,
+                data: data.to_vec(),
+            }]
         }
         fn tool_tip(&self) -> ksni::ToolTip {
             // Plain, fixed-state text; do not put config contents in a tooltip.
@@ -99,8 +108,7 @@ mod desktop {
                     self.state.active != "missing",
                 ),
                 ksni::MenuItem::Separator,
-                self.item("Configure Frame Voice…", Action::Configure, true),
-                self.item("Configure controllers…", Action::ConfigureControllers, true),
+                self.item("Configure…", Action::Configure, true),
                 self.item("Open configuration file", Action::Config, true),
                 self.item("View recent logs", Action::Logs, true),
                 self.item("Open installation folder", Action::Folder, true),
@@ -131,13 +139,6 @@ mod desktop {
             Action::Configure => {
                 let mut command = Command::new("bash");
                 command.arg(manager.home.join(".local/share/frame-voice/config-gui.sh"));
-                command
-            }
-            Action::ConfigureControllers => {
-                let mut command = Command::new("bash");
-                command
-                    .arg(manager.home.join(".local/share/frame-voice/config-gui.sh"))
-                    .arg("controllers");
                 command
             }
             _ => {
@@ -186,11 +187,7 @@ mod desktop {
                     break;
                 }
                 Ok(
-                    action @ (Action::Config
-                    | Action::Configure
-                    | Action::ConfigureControllers
-                    | Action::Logs
-                    | Action::Folder),
+                    action @ (Action::Config | Action::Configure | Action::Logs | Action::Folder),
                 ) => {
                     if windows.len() >= 8 {
                         message = "Close a log/config window before opening another".into();

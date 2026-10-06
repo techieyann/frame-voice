@@ -77,7 +77,16 @@ mod tests {
     #[test]
     fn exact_commands_and_preserved_content() {
         assert_eq!(classify("Submit!"), Output::Submit);
-        for text in ["watch", "credit", "go now", "clear the cache", "sender"] {
+        for text in [
+            "watch",
+            "credit",
+            "go now",
+            "clear the cache",
+            "sender",
+            "Thank you.",
+            "Yeah",
+            "you.",
+        ] {
             assert!(matches!(classify(text), Output::Text(_)));
         }
         assert_eq!(

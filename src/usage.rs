@@ -1,4 +1,4 @@
-//! Surface Groq free-tier headroom as SteamVR notifications.
+//! Surface Groq rate-limit headroom as SteamVR notifications.
 //!
 //! Every Groq response carries `x-ratelimit-remaining-*` headers. Workers watch
 //! them and queue a warning when a threshold is crossed. The daemon's main thread
@@ -36,7 +36,8 @@ fn header_i64(headers: &HeaderMap, name: &str) -> Option<i64> {
 }
 
 fn queue(c: &Config, summary: &str, body: &str) {
-    if !c.boolean("VOICE_NOTIFY", true).unwrap_or(true) {
+    let legacy = c.boolean("VOICE_NOTIFY", true).unwrap_or(true);
+    if !c.boolean("GROQ_USAGE_NOTIFY", legacy).unwrap_or(legacy) {
         return;
     }
     let cooldown: i64 = c

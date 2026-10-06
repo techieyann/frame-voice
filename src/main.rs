@@ -29,13 +29,14 @@ const BADGE_PROCESSING: i32 = 2;
 const BADGE_CANCELED: i32 = 3;
 const CANCEL_NOTICE_MS: u64 = 900;
 /// Default time the recording badge takes to grow to full size. The start tone
-/// waits for the growth, so the icon reaches full together with the tone.
+/// waits for the growth after capture/output startup, so cold startup cannot
+/// leave a full-sized mic waiting for its first tone.
 /// Override with `VRBTN_GROW_MS`.
-const BADGE_GROWTH_MS: u64 = 450;
+const BADGE_GROWTH_MS: u64 = 180;
 /// The start tone is triggered this many ms before the mic reaches full size,
 /// so the sound (which has output latency) lands as the icon completes.
 /// Override with `VRBTN_BEEP_LEAD_MS`.
-const BEEP_LEAD_MS: u64 = 150;
+const BEEP_LEAD_MS: u64 = 30;
 extern "C" fn shutdown(_: libc::c_int) {
     SHUTDOWN.store(true, Ordering::SeqCst);
 }
@@ -86,6 +87,7 @@ fn armed(until: Option<Instant>, now: Instant) -> bool {
     until.is_some_and(|t| now < t)
 }
 struct Job {
+    feedback: Option<frame_voice::feedback::Lease>,
     control: Control,
     focus: Snapshot,
     worker: Worker<Result<Output>>,
@@ -111,6 +113,23 @@ impl Job {
 fn ready_cue(job: &Job) -> bool {
     job.live_ready() && !job.beeped
 }
+/// Keep the small badge visible while capture/output start. Growth starts once
+/// both are ready, rather than spending its animation budget on cold startup.
+fn activation_elapsed(start: &mut Instant, now: Instant, ready: bool) -> Duration {
+    if !ready {
+        *start = now;
+        Duration::ZERO
+    } else {
+        now.saturating_duration_since(*start)
+    }
+}
+fn touch_available(active: &[u8; 5]) -> bool {
+    active[0] != 0 || active[1] != 0
+}
+fn input_invalidated(previous: &[u8; 5], current: &[u8; 5], hand: Option<usize>) -> bool {
+    touch_available(previous) != touch_available(current)
+        || hand.is_some_and(|i| previous[i] != 0 && current[i] == 0)
+}
 impl Drop for Job {
     fn drop(&mut self) {
         self.control.cancel();
@@ -128,6 +147,7 @@ fn spawn(c: &Config, focus: &Snapshot) -> Job {
             .unwrap_or_else(|_| Err(anyhow::anyhow!("dictation worker panicked")))
     });
     Job {
+        feedback: frame_voice::feedback::warm(c),
         control,
         focus: focus.clone(),
         worker,
@@ -235,6 +255,9 @@ fn daemon(c: Config) -> Result<()> {
         let mut pid = vrserver_pid();
         while !SHUTDOWN.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_secs(2));
+            if SHUTDOWN.load(Ordering::SeqCst) {
+                break;
+            }
             let now = vrserver_pid();
             if now != pid {
                 eprintln!(
@@ -250,8 +273,10 @@ fn daemon(c: Config) -> Result<()> {
     gesture.arm_ms = c.timing("VRBTN_ARM_MS", 150)?;
     gesture.tap_ms = c.timing("VRBTN_TAP_MS", 250)?;
     gesture.ready_ms = c.timing("VRBTN_READY_MS", 600)?;
-    let badge_growth = Duration::from_millis(c.timing("VRBTN_GROW_MS", BADGE_GROWTH_MS)?);
     let beep_lead = Duration::from_millis(c.timing("VRBTN_BEEP_LEAD_MS", BEEP_LEAD_MS)?);
+    // Even custom hold thresholds must leave room to queue the cue before full size.
+    let badge_growth = Duration::from_millis(c.timing("VRBTN_GROW_MS", BADGE_GROWTH_MS)?)
+        .max(Duration::from_millis(gesture.arm_ms).saturating_add(beep_lead));
     let action_window = match c.values.get("VOICE_ACTION_WINDOW_MS") {
         Some(v) => v
             .parse::<u64>()
@@ -294,10 +319,14 @@ fn daemon(c: Config) -> Result<()> {
     // tracked (headset off, controllers idle) just wait, so we never restart in a
     // loop when nothing is happening.
     let mut tracked_inactive = 0u32;
+    let mut touch_hand: Option<usize> = None;
     loop {
+        if SHUTDOWN.load(Ordering::SeqCst) {
+            return Ok(());
+        }
         if vr
             .poll()
-            .map(|s| s.active.iter().any(|&a| a != 0))
+            .map(|s| touch_available(&s.active))
             .unwrap_or(false)
         {
             break;
@@ -372,7 +401,19 @@ fn daemon(c: Config) -> Result<()> {
                 snapshot.active, snapshot.state
             );
         }
-        if baseline || snapshot.active != active {
+        let availability_changed = snapshot.active != active;
+        let owning_hand = if job.as_ref().is_some_and(|j| j.committed) || warming_at.is_some() {
+            usize::try_from(badge_hand).ok().filter(|&i| i < 2)
+        } else {
+            touch_hand
+        };
+        if debug && (baseline || availability_changed) {
+            eprintln!(
+                "availability: active={:?} state={:?}",
+                snapshot.active, snapshot.state
+            );
+        }
+        if baseline || input_invalidated(&active, &snapshot.active, owning_hand) {
             if debug {
                 eprintln!(
                     "availability: active={:?} state={:?}",
@@ -386,6 +427,7 @@ fn daemon(c: Config) -> Result<()> {
                 let _ = vr.badge(BADGE_HIDDEN, -1);
             }
             gesture.reset();
+            touch_hand = None;
             previous = snapshot.state;
             active = snapshot.active;
             baseline = false;
@@ -399,9 +441,23 @@ fn daemon(c: Config) -> Result<()> {
             ));
             continue;
         }
+        if availability_changed {
+            // Newly connected buttons are baselined; their initial held state
+            // must not submit/clear/cancel an existing job. The other hand's
+            // gesture remains usable when a controller sleeps or reconnects.
+            for i in 2..5 {
+                if active[i] == 0 && snapshot.active[i] != 0 {
+                    previous[i] = snapshot.state[i];
+                }
+            }
+            active = snapshot.active;
+        }
+        if let Some(hand) = snapshot.state[..2].iter().position(|&state| state != 0) {
+            touch_hand = Some(hand);
+        }
         // Losing all touch action data invalidates the recording; never treat it as release.
         if snapshot.active[0] == 0 && snapshot.active[1] == 0 {
-            if debug {
+            if debug && availability_changed {
                 eprintln!("availability lost: active={:?}", snapshot.active);
             }
             if let Some(j) = &job {
@@ -477,6 +533,7 @@ fn daemon(c: Config) -> Result<()> {
                             let mut j = spawn(&c, &focus);
                             j.committed = true;
                             job = Some(j);
+                            warming_at = Some(Instant::now());
                         }
                         None => {
                             audio::beep(&c, 320.);
@@ -506,23 +563,31 @@ fn daemon(c: Config) -> Result<()> {
                 }
                 None => {}
             }
-            // The mic grows linearly to full over `badge_growth`; the start tone
-            // is led by `beep_lead` so its audible onset lands as it hits full.
+            // Cold startup holds the small badge. Once capture and output are
+            // ready, the growth and cue use the same clock, with playback led
+            // slightly so audible onset lands as the mic reaches full size.
             if let Some(j) = job.as_mut() {
-                let elapsed = warming_at.map(|at| at.elapsed());
-                if ready_cue(j) && elapsed.is_none_or(|e| e + beep_lead >= badge_growth) {
+                let activation_ready = j.control.live.load(Ordering::SeqCst)
+                    && j.feedback.as_ref().is_none_or(|lease| lease.ready());
+                let elapsed = warming_at
+                    .as_mut()
+                    .map(|at| activation_elapsed(at, Instant::now(), activation_ready));
+                if activation_ready
+                    && ready_cue(j)
+                    && elapsed.is_none_or(|e| e + beep_lead >= badge_growth)
+                {
                     j.beeped = true;
                     audio::beep(&c, 880.);
                 }
-                if let Some(at) = warming_at {
-                    if j.live_ready() && at.elapsed() >= badge_growth {
+                if let Some(elapsed) = elapsed {
+                    if j.live_ready() && elapsed >= badge_growth && (!c.beep || j.beeped) {
                         warming_at = None;
                         if notify {
                             let _ = vr.badge(BADGE_RECORDING, badge_hand);
                         }
                     } else if notify && !j.control.canceled() && Instant::now() >= next_badge_tick {
                         let progress =
-                            (at.elapsed().as_secs_f32() / badge_growth.as_secs_f32()).min(1.0);
+                            (elapsed.as_secs_f32() / badge_growth.as_secs_f32()).min(1.0);
                         let _ = vr.badge_progress(progress, badge_hand);
                         next_badge_tick = Instant::now() + cadence::BADGE_INTERVAL;
                     }
@@ -774,6 +839,20 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn either_controller_works_and_only_the_owning_hand_can_invalidate_it() {
+        let left = [1, 0, 1, 1, 1];
+        let right = [0, 1, 1, 1, 1];
+        let both = [1, 1, 1, 1, 1];
+        assert!(touch_available(&left));
+        assert!(touch_available(&right));
+        assert!(!touch_available(&[0, 0, 1, 1, 1]));
+        assert!(!input_invalidated(&left, &both, Some(0)));
+        assert!(!input_invalidated(&both, &left, Some(0)));
+        assert!(!input_invalidated(&both, &right, Some(1)));
+        assert!(input_invalidated(&both, &left, Some(1)));
+        assert!(input_invalidated(&left, &[0; 5], Some(0)));
+    }
+    #[test]
     fn canceled_or_changed_focus_never_injects() {
         let focus = Snapshot {
             revision: 1,
@@ -801,6 +880,7 @@ mod tests {
         let (release, gate) = std::sync::mpsc::channel();
         let control = Control::default();
         let mut job = Some(Job {
+            feedback: None,
             control: control.clone(),
             focus: Snapshot::default(),
             worker: Worker::spawn(move || {
@@ -821,6 +901,7 @@ mod tests {
     #[test]
     fn recording_cue_waits_for_live_committed_capture_and_only_fires_once() {
         let mut job = Job {
+            feedback: None,
             control: Control::default(),
             focus: Snapshot::default(),
             worker: Worker::spawn(|| Ok(Output::Cancel)),
@@ -840,6 +921,31 @@ mod tests {
         job.control.stop.store(false, Ordering::SeqCst);
         job.control.cancel();
         assert!(!ready_cue(&job));
+    }
+    #[test]
+    fn cold_start_does_not_consume_the_activation_animation() {
+        let held = Instant::now();
+        let mut animation = held;
+        let cold = held + Duration::from_millis(400);
+        assert_eq!(
+            activation_elapsed(&mut animation, cold, false),
+            Duration::ZERO
+        );
+        // Readiness alone must not jump a cold capture to a completed badge.
+        assert_eq!(
+            activation_elapsed(&mut animation, cold, true),
+            Duration::ZERO
+        );
+        assert_eq!(
+            activation_elapsed(&mut animation, cold + Duration::from_millis(150), true),
+            Duration::from_millis(150)
+        );
+        // An already-warm capture keeps the existing quick activation timing.
+        let mut warm = held;
+        assert_eq!(
+            activation_elapsed(&mut warm, held + Duration::from_millis(150), true),
+            Duration::from_millis(150)
+        );
     }
     #[test]
     fn action_window_expires_and_defaults_closed() {

@@ -47,7 +47,7 @@ git push origin v0.1.0
 Pushing `main` does not build or publish anything. Release CI verifies compilation and host
 tests; microphone, controller, SteamVR overlay and text delivery behavior still
 need on-device qualification before stable promotion. Runners must be enabled
-and the account must have Actions minutes available for this private repository.
+and the repository must have access to the required GitHub Actions runner.
 
 ## Artifacts
 

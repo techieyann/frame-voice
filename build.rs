@@ -1,6 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=shim/openvr_shim.cpp");
     println!("cargo:rerun-if-changed=shim/badge_icons.h");
+    println!("cargo:rerun-if-changed=shim/input_poll.h");
     println!("cargo:rerun-if-env-changed=OPENVR_INCLUDE_DIR");
     if std::env::var_os("CARGO_FEATURE_OPENVR").is_none() {
         return;

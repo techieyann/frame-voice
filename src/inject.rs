@@ -274,7 +274,10 @@ pub fn send_guarded(
         return clear_implanted(c, focus);
     }
     if let Output::Text(text) = output {
-        if c.get("VOICE_INJECT", "type") == "paste" {
+        if !text.is_ascii() && classless {
+            bail!("Unicode text needs a clipboard-compatible standalone app; nested Desktop typing cannot deliver it safely");
+        }
+        if c.get("VOICE_INJECT", "type") == "paste" || !text.is_ascii() {
             // A classless target is the nested Desktop: it has no known paste
             // chord and runs on its own :2/Wayland session, so the X11 clipboard
             // helper cannot serve it. Fall back to uinput typing, which follows

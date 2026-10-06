@@ -15,6 +15,7 @@ import time
 
 PROJECT = Path(__file__).resolve().parent.parent
 UNITS = ('frame-voice.service', 'frame-voice-tray-session.service', 'frame-voice-input.service', 'frame-voice-mixer.service')
+LEGACY_UNITS = ('ydotoold.service', 'voice-mixer.service')
 CONFIG = '.config/frame-voice/env'
 EXAMPLE = b'''# Frame Voice configuration.
 # Literal KEY=VALUE (not shell). Uncomment a line to change it. Keep mode 600.
@@ -31,7 +32,8 @@ GROQ_API_KEY=
 # VOICE_CLEANUP=1
 # VOICE_LANG=en
 # VOICE_TRAILING=space               # space | none
-# VOICE_SLASH=1                      # render spoken "slash" as /
+# VOICE_SLASH=0                      # optionally render spoken "slash" as /
+# GROQ_PROMPT_FILE=                  # optional custom transcript-cleanup prompt
 # VOICE_MIN_SPEECH_MS=200
 # VOICE_MAX=30
 #
@@ -44,8 +46,9 @@ GROQ_API_KEY=
 # == Feedback ==
 # VOICE_BEEP=1
 # VOICE_NOTIFY=1
-# VRBTN_GROW_MS=450
-# VRBTN_BEEP_LEAD_MS=150
+# GROQ_USAGE_NOTIFY=1                # Groq usage/limit warnings only
+# VRBTN_GROW_MS=180
+# VRBTN_BEEP_LEAD_MS=30
 #
 # == Gesture timing ==
 # VRBTN_ARM_MS=150
@@ -54,8 +57,8 @@ GROQ_API_KEY=
 # VOICE_ACTION_WINDOW_MS=10000
 #
 # == Usage warnings ==
-# VOICE_WARN_REQUESTS=100
-# VOICE_WARN_TOKENS=1000
+# VOICE_WARN_REQUESTS=50
+# VOICE_WARN_TOKENS=500
 # VOICE_WARN_COOLDOWN_SEC=3600
 #
 # == Local ASR  (VOICE_BACKEND=local) ==
@@ -114,6 +117,7 @@ def payload(project, binary, tray, include_tray, home):
     for name in ('frame-voice-input.service', 'frame-voice-mixer.service'):
         add(project/'systemd'/name, '.config/systemd/user/'+name)
     add(project/'tools/mic-gain.sh', '.local/share/frame-voice/mic-gain.sh', 0o755)
+    add(project/'assets/groq-prompt.txt', '.local/share/frame-voice/groq-prompt.txt')
     if (project / 'release.json').is_file():
         add(project / 'release.json', '.local/share/frame-voice/release.json')
     for source in (project/'licenses').glob('*.txt'):
@@ -121,6 +125,16 @@ def payload(project, binary, tray, include_tray, home):
     for source in (project/'.build/runtime/licenses').glob('*.txt'):
         add(source, '.local/share/frame-voice/licenses/'+source.name)
     if include_tray:
+        add(project/'assets/icons/microphone.svg', '.local/share/icons/hicolor/scalable/apps/frame-voice.svg')
+        launcher = str(home/'.local/share/frame-voice/config-gui.sh').replace('\\', '\\\\').replace('"', '\\"')
+        for app, title, extra in (('config', 'Frame Voice settings', ''), ('setup', 'Frame Voice setup', ' --setup')):
+            desktop = (f'[Desktop Entry]\nType=Application\nName={title}\n'
+                       f'Exec=bash "{launcher}"{extra}\nIcon=frame-voice\n'
+                       f'StartupWMClass=dev.framevoice.{app}\nNoDisplay=true\nTerminal=false\n')
+            files[f'.local/share/applications/dev.framevoice.{app}.desktop'] = (desktop.encode(), 0o644)
+        add(project / 'tools/local-install.py', '.local/share/frame-voice/local-install.py')
+        add(project / 'tools/setup-backend.py', '.local/share/frame-voice/setup-backend.py')
+        add(project / 'tools/setup-interface.py', '.local/share/frame-voice/setup-interface.py')
         add(tray, '.local/bin/frame-voice-tray', 0o755)
         add(project / 'tools/tray-session.py', '.local/share/frame-voice/tray-session.py', 0o755)
         add(project / 'tools/config-gui.sh', '.local/share/frame-voice/config-gui.sh', 0o755)
@@ -142,7 +156,7 @@ class Transaction:
         self.home = home
         self.root = home / '.local/share/frame-voice-installer'
 
-    def install(self, files, service_states):
+    def install(self, files, service_states, legacy_states=None, retired_states=None):
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         snapshot = self.root / 'transactions' / str(time.time_ns())
         snapshot.mkdir(parents=True, mode=0o700)
@@ -160,6 +174,10 @@ class Transaction:
                             'mode': target.stat().st_mode & 0o777 if existed else mode,
                             'installed_sha256': digest(data)})
         manifest = {'entries': entries, 'services': service_states}
+        if legacy_states:
+            manifest['legacy_services'] = legacy_states
+        if retired_states:
+            manifest['retired_legacy_services'] = retired_states
         atomic_write(snapshot / 'manifest.json', json.dumps(manifest, indent=2).encode(), 0o600)
         try:
             for name, (data, mode) in files.items():
@@ -232,6 +250,27 @@ def capability(binary, expected):
         raise RuntimeError(f'Wrong or unusable binary: {binary}; expected {expected}')
 
 
+def remove_input_rules(uid):
+    """Remove only the exact administrator files created by this installer."""
+    expected = {
+        Path('/etc/udev/rules.d/99-frame-voice-uinput.rules'):
+            f'KERNEL=="uinput", SUBSYSTEM=="misc", OWNER="{uid}", MODE="0600"\n',
+        Path('/etc/modules-load.d/frame-voice.conf'): 'uinput\n',
+    }
+    paths = []
+    for path, content in expected.items():
+        if path.is_symlink(): raise RuntimeError(f'Refusing symlink: {path}')
+        if path.exists():
+            if path.read_text() != content:
+                raise RuntimeError(f'Administrator file has changed; remove it manually: {path}')
+            paths.append(str(path))
+    if not paths: return
+    auth = ['/usr/bin/pkexec'] if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY') else ['sudo']
+    result = subprocess.run([*auth, '/usr/bin/rm', '--', *paths], capture_output=True, text=True, timeout=120)
+    if result.returncode:
+        raise RuntimeError('Administrator approval is required to remove Frame Voice input rules; uninstall canceled.')
+
+
 def execute(args):
     if platform.system() != 'Linux' or platform.machine() != 'aarch64' or os.getuid() == 0:
         raise RuntimeError('Run on the aarch64 SteamOS Frame as its normal user, without sudo')
@@ -243,31 +282,81 @@ def execute(args):
         include_tray = not args.daemon_only
         if args.enable_tray and not include_tray:
             raise RuntimeError('--enable-tray cannot be combined with --daemon-only')
+        replace_legacy = getattr(args, 'replace_legacy_helpers', False)
         capability(binary, 'OpenVR compiled=true')
         if include_tray:
             capability(tray, 'StatusNotifier compiled=true')
         files = payload(PROJECT, binary, tray, include_tray, home)
+        if replace_legacy and '.local/share/frame-voice/bin/ydotoold' not in files:
+            raise RuntimeError('Replacing legacy helpers requires the bundled ydotoold')
         previous = home / '.local/bin/frame-voice'
         if previous.is_file():
             files['.local/bin/frame-voice.previous'] = (previous.read_bytes(), previous.stat().st_mode & 0o777)
         units = UNITS if include_tray else (UNITS[0], UNITS[2], UNITS[3])
         services.call('daemon-reload')
         states = services.states(units)
-        setup = getattr(args, 'setup', False) or getattr(args, 'backend', None) is not None
+        legacy_states = services.states(LEGACY_UNITS) if replace_legacy else {}
+        # Carry the original shared-helper states across subsequent upgrades.
+        retired_states = legacy_states.copy()
+        if (transaction.root / 'current').exists():
+            prior = json.loads((transaction.current() / 'manifest.json').read_text())
+            retired_states.update(prior.get('retired_legacy_services', prior.get('legacy_services', {})))
+        setup = (getattr(args, 'setup', False) or getattr(args, 'backend', None) is not None
+                 or getattr(args, 'language', None) is not None
+                 or getattr(args, 'setup_ui', 'auto') != 'auto' or getattr(args, 'non_interactive', False))
+        # Keep credentials only in memory while setup runs, never in snapshots.
+        config_before = (home/CONFIG).read_bytes() if setup and (home/CONFIG).exists() else None
         if (args.activate and not setup) or states[UNITS[0]]['active']:
             subprocess.run([str(binary), '--check'], check=True, timeout=10)
         snapshot = None
+        legacy_changed = False
         try:
             for unit in units:
                 if states[unit]['active']:
                     services.call('stop', unit)
-            snapshot = transaction.install(files, states)
+            snapshot = transaction.install(files, states, legacy_states, retired_states)
             services.call('daemon-reload')
+            if setup:
+                spec = importlib.util.spec_from_file_location('backend_setup', PROJECT/'tools/setup-backend.py')
+                backend = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(backend)
+                if getattr(args, 'non_interactive', False):
+                    updates, _ = backend.prepare(home, getattr(args, 'backend', None),
+                        key_file=getattr(args, 'groq_key_file', None), allow_prompt=False,
+                        language=getattr(args, 'language', None))
+                    if not os.access('/dev/uinput', os.W_OK):
+                        raise RuntimeError('Input permissions require interactive setup first')
+                    backend.write_values(home/CONFIG, updates)
+                else:
+                    spec = importlib.util.spec_from_file_location('setup_interface', PROJECT/'tools/setup-interface.py')
+                    interface = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(interface)
+                    interface.configure(backend, home, getattr(args, 'setup_ui', 'auto'),
+                        getattr(args, 'backend', None), getattr(args, 'language', None),
+                        getattr(args, 'groq_key_file', None))
+                subprocess.run([str(home/'.local/bin/frame-voice'), '--check'], check=True, timeout=10)
+            if replace_legacy:
+                # Explicit opt-in: ydotoold may also serve unrelated applications.
+                # Keep its files and snapshot its state for rollback/uninstall.
+                legacy_changed = True
+                for unit, state in legacy_states.items():
+                    if state['active'] or state['enabled']:
+                        services.call('disable', '--now', unit)
             services.restore(states)
+            if replace_legacy:
+                services.call('start', UNITS[2], UNITS[3])
+                for legacy, replacement in zip(LEGACY_UNITS, (UNITS[2], UNITS[3])):
+                    if legacy_states[legacy]['enabled']:
+                        services.call('enable', replacement)
             if args.enable_tray:
                 services.call('enable', '--now', UNITS[1])
             if args.activate and not setup:
                 services.call('enable', '--now', UNITS[0])
+            if setup:
+                services.call('start', UNITS[2], UNITS[3])
+                if include_tray: services.call('enable', '--now', UNITS[1])
+                services.call('enable', '--now', UNITS[0])
+                services.call('restart', UNITS[0])
             transaction.commit(snapshot)
         except BaseException:
             if snapshot is not None:
@@ -276,29 +365,38 @@ def execute(args):
                     services.call('disable', unit, required=False)
                 transaction.restore(snapshot, preserve_modified=False)
                 services.call('daemon-reload', required=False)
+            if setup:
+                if config_before is None:
+                    (home/CONFIG).unlink(missing_ok=True)
+                else:
+                    atomic_write(home/CONFIG, config_before, 0o600)
+            if legacy_changed:
+                services.restore(legacy_states)
             services.restore(states)
             raise
         print(f'Installed. Full rollback snapshot: {snapshot}')
         if setup:
-            spec = importlib.util.spec_from_file_location('backend_setup', PROJECT/'tools/setup-backend.py')
-            backend = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(backend)
-            backend.configure(home, getattr(args, 'backend', None), getattr(args, 'groq_key_file', None))
-            subprocess.run([str(home/'.local/bin/frame-voice'), '--check'], check=True, timeout=10)
-            services.call('start', UNITS[2], UNITS[3])
-            if include_tray: services.call('enable', '--now', UNITS[1])
-            services.call('enable', '--now', UNITS[0])
-            services.call('restart', UNITS[0])
             print('Ready. Open Desktop for the tray and hold a controller to dictate.')
             return
         print('Existing service state restored; new installs remain stopped unless explicitly activated.')
         print('Configure ~/.config/frame-voice/env or groq.key (mode 600), then run frame-voice --check.')
         print('Activate: systemctl --user enable --now frame-voice frame-voice-tray-session')
     else:
+        remove_config = args.operation == 'uninstall' and getattr(args, 'remove_config', False)
+        config_dir = managed_path(home, '.config/frame-voice') if remove_config else None
+        remove_models = args.operation == 'uninstall' and getattr(args, 'remove_models', False)
+        app_dir = managed_path(home, '.local/share/frame-voice') if args.operation == 'uninstall' else None
+        if app_dir is not None:
+            managed_path(home, '.local/share/frame-voice/models')
+            managed_path(home, '.local/share/frame-voice-installer')
+            for unit in UNITS:
+                managed_path(home, f'.config/systemd/user/{unit}.d')
         snapshot = transaction.current()
         if args.operation == 'rollback':
             transaction.check_restore(snapshot)
         manifest = json.loads((snapshot / 'manifest.json').read_text())
+        if remove_config and remove_models:
+            remove_input_rules(os.getuid())
         for unit in manifest['services']:
             services.call('stop', unit, required=False)
             services.call('disable', unit, required=False)
@@ -306,21 +404,39 @@ def execute(args):
             transaction.restore(snapshot)
             services.call('daemon-reload')
             services.restore(manifest['services'])
+            services.restore(manifest.get('legacy_services', {}))
             print('Restored the last installation snapshot; modified files were preserved.')
         else:
             for entry in manifest['entries']:
                 if entry['path'] == CONFIG:
                     continue
-                if entry['path'].endswith('.previous'):
-                    continue
                 target = managed_path(home, entry['path'])
                 if target.exists():
-                    if digest(target.read_bytes()) == entry['installed_sha256']:
-                        target.unlink()
-                    else:
-                        print(f'Preserved modified file: {target}')
+                    target.unlink()
+            for unit in UNITS:
+                dropins = managed_path(home, f'.config/systemd/user/{unit}.d')
+                if dropins.exists(): shutil.rmtree(dropins)
             services.call('daemon-reload')
-            print('Uninstalled managed files; configuration, backups, ydotoold and voice-mixer retained.')
+            services.restore(manifest.get('retired_legacy_services', manifest.get('legacy_services', {})))
+            if config_dir is not None and config_dir.exists():
+                shutil.rmtree(config_dir)
+            # App-owned backups and data must not accumulate after removal.
+            if app_dir is not None and app_dir.exists():
+                for child in app_dir.iterdir():
+                    if child.name == 'models' and not remove_models:
+                        continue
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+                if not any(app_dir.iterdir()): app_dir.rmdir()
+            for relative in ('.local/bin/frame-voice.previous', '.local/share/frame-voice-installer'):
+                path = managed_path(home, relative)
+                if path.is_dir(): shutil.rmtree(path)
+                else: path.unlink(missing_ok=True)
+            config_note = 'configuration removed' if remove_config else 'configuration retained'
+            model_note = 'downloaded models removed' if remove_models else 'downloaded models retained'
+            print(f'Uninstalled Frame Voice; {config_note}; {model_note}. App data and backups removed; legacy files retained.')
 
 
 def arguments():
@@ -331,10 +447,25 @@ def arguments():
     parser.add_argument('--daemon-only', action='store_true')
     parser.add_argument('--enable-tray', action='store_true')
     parser.add_argument('--activate', action='store_true')
+    parser.add_argument('--remove-config', action='store_true',
+                        help='Also delete Frame Voice settings and keys when uninstalling')
+    parser.add_argument('--remove-models', action='store_true',
+                        help='Also delete models downloaded by Frame Voice when uninstalling')
+    parser.add_argument('--replace-legacy-helpers', action='store_true',
+                        help='Retire ydotoold/voice-mixer services; restore them on rollback or uninstall')
     parser.add_argument('--setup', action='store_true', help='Choose a backend, download its model if local, and activate')
     parser.add_argument('--backend', choices=('groq', 'local-fast', 'local-balanced'))
+    parser.add_argument('--language', help='Transcription language code or auto')
+    frontends = parser.add_mutually_exclusive_group()
+    frontends.add_argument('--gui', dest='setup_ui', action='store_const', const='gui', help='Open the GUI installer in Desktop')
+    frontends.add_argument('--tui', dest='setup_ui', action='store_const', const='tui', help='Open the terminal installer')
+    parser.set_defaults(setup_ui='auto')
+    parser.add_argument('--non-interactive', action='store_true', help='Configure from flags without dialogs or password prompts')
     parser.add_argument('--groq-key-file', type=Path, help='Read the Groq key from a local file without placing it in command arguments')
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.non_interactive and args.setup_ui != 'auto':
+        parser.error('--non-interactive cannot be combined with --gui or --tui')
+    return args
 
 
 if __name__ == '__main__':

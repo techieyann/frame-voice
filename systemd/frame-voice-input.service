@@ -3,6 +3,9 @@ Description=Frame Voice input helper
 
 [Service]
 ExecStart=%h/.local/share/frame-voice/bin/ydotoold --socket-path=%t/frame-voice-ydotool.sock --socket-perm=0600 --mouse-off
+# Keyboard-only uinput injection needs no X display. Prevent ydotoold's
+# optional mouse-acceleration setup from invoking xinput on Xwayland.
+UnsetEnvironment=DISPLAY
 Restart=on-failure
 RestartSec=2
 UMask=0077

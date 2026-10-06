@@ -69,6 +69,8 @@ jobs:
           python3 -m unittest discover -s tests -p '*.py'
           c++ -O2 -std=c++17 -Wall -Wextra -Werror tests/badge_icons.cpp -o /tmp/badge-icons-test
           /tmp/badge-icons-test
+          c++ -O2 -std=c++17 -Wall -Wextra -Werror -I "$OPENVR_INCLUDE_DIR" tests/openvr_poll.cpp -o /tmp/openvr-poll-test
+          /tmp/openvr-poll-test
       - name: Build native glibc binaries
         run: ./build-local.sh
       - name: Build bundled runtime helpers

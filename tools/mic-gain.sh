@@ -4,13 +4,15 @@ set -eu
 gain=${MIC_GAIN:-120}
 card=${MIC_CARD:-0}
 attempt=0
-while [ "$attempt" -lt 30 ]; do
+attempts=30
+[ "${1:-}" != --once ] || attempts=1
+while [ "$attempt" -lt "$attempts" ]; do
     if amixer -c "$card" sset VA_DEC0 "$gain" >/dev/null 2>&1; then
         amixer -c "$card" sset VA_DEC1 "$gain" >/dev/null 2>&1 || true
         exit 0
     fi
     attempt=$((attempt + 1))
-    sleep 1
+    [ "$attempt" -ge "$attempts" ] || sleep 1
 done
 echo 'Frame Voice: microphone gain could not be configured.' >&2
 exit 1

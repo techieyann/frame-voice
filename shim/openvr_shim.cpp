@@ -1,5 +1,6 @@
 // The SDK owns all C++ ABI details. Rust receives only a fixed-width snapshot.
 #include <openvr.h>
+#include "input_poll.h"
 #include <dlfcn.h>
 #include <cmath>
 #include <chrono>
@@ -384,20 +385,7 @@ extern "C" int fv_open(const char* path, const char* manifest) {
 }
 extern "C" int fv_poll(uint8_t* active, uint8_t* state) {
     if (!input || !active || !state) return -4;
-    vr::VRActiveActionSet_t set = {};
-    set.ulActionSet = action_set;
-    auto e = input->UpdateActionState(&set, sizeof(set), 1);
-    if (e != vr::VRInputError_None) return static_cast<int>(e);
-    for (int i = 0; i < 5; ++i) {
-        vr::InputDigitalActionData_t data = {};
-        e = input->GetDigitalActionData(actions[i], &data, sizeof(data), vr::k_ulInvalidInputValueHandle);
-        if (e != vr::VRInputError_None) return static_cast<int>(e);
-        active[i] = data.bActive;
-        state[i] = data.bActive && data.bState;
-        // Remember which thumbstick origin drives each touch action.
-        if (i < 2 && data.bActive) touch_origin[i] = data.activeOrigin;
-    }
-    return 0;
+    return fv_poll_inputs(input, action_set, actions, active, state, touch_origin);
 }
 // Whether the HMD pose is currently valid. Used to tell "SteamVR bindings have
 // not loaded" (HMD tracked, but no action active) apart from "the user is not

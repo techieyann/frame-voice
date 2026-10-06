@@ -71,7 +71,8 @@ impl Config {
         c.cleanup = c.boolean("VOICE_CLEANUP", true)?;
         c.beep = c.boolean("VOICE_BEEP", true)?;
         // Validate now so a bad value fails startup rather than a dictation.
-        c.boolean("VOICE_SLASH", true)?;
+        c.boolean("VOICE_SLASH", false)?;
+        c.boolean("GROQ_USAGE_NOTIFY", true)?;
         c.paste_chunk = c
             .get("VOICE_PASTE_CHUNK", "0")
             .parse()
@@ -102,6 +103,7 @@ impl Config {
         for key in ["VRBTN_ARM_MS", "VRBTN_TAP_MS", "VRBTN_READY_MS"] {
             c.timing(key, 150)?;
         }
+        c.asr_confidence_limits()?;
         Ok(c)
     }
     pub fn get<'a>(&'a self, key: &str, default: &'a str) -> &'a str {
@@ -124,6 +126,23 @@ impl Config {
             bail!("{key} must be 30..5000 ms");
         }
         Ok(v)
+    }
+    pub fn asr_confidence_limits(&self) -> Result<(f64, f64)> {
+        let min: f64 = self
+            .get("GROQ_ASR_MIN_LOGPROB", "-0.75")
+            .parse()
+            .context("GROQ_ASR_MIN_LOGPROB must be numeric")?;
+        let max: f64 = self
+            .get("GROQ_ASR_MAX_NO_SPEECH", "0.6")
+            .parse()
+            .context("GROQ_ASR_MAX_NO_SPEECH must be numeric")?;
+        if !min.is_finite() || !(-10.0..=0.0).contains(&min) {
+            bail!("GROQ_ASR_MIN_LOGPROB must be -10..0");
+        }
+        if !max.is_finite() || !(0.0..=1.0).contains(&max) {
+            bail!("GROQ_ASR_MAX_NO_SPEECH must be 0..1");
+        }
+        Ok((min, max))
     }
     pub fn bin(&self, key: &str, name: &str) -> String {
         self.values.get(key).cloned().unwrap_or_else(|| {
@@ -175,6 +194,37 @@ mod tests {
         parse_env("KEY=new", &mut m).unwrap();
         assert_eq!(m["KEY"], "new");
         assert!(parse_env("oops", &mut m).is_err());
+    }
+    #[test]
+    fn confidence_limits_validate_numeric_ranges_and_can_be_tuned() {
+        let mut config = Config {
+            home: Default::default(),
+            values: BTreeMap::new(),
+            max_seconds: 30.,
+            threshold: 300.,
+            cleanup: true,
+            beep: true,
+            paste_chunk: 0,
+            min_speech_ms: 200,
+        };
+        assert_eq!(config.asr_confidence_limits().unwrap(), (-0.75, 0.6));
+        for (key, bad) in [
+            ("GROQ_ASR_MIN_LOGPROB", "NaN"),
+            ("GROQ_ASR_MIN_LOGPROB", "0.1"),
+            ("GROQ_ASR_MAX_NO_SPEECH", "inf"),
+            ("GROQ_ASR_MAX_NO_SPEECH", "1.1"),
+        ] {
+            config.values.insert(key.into(), bad.into());
+            assert!(config.asr_confidence_limits().is_err());
+            config.values.clear();
+        }
+        config
+            .values
+            .insert("GROQ_ASR_MIN_LOGPROB".into(), "-1".into());
+        config
+            .values
+            .insert("GROQ_ASR_MAX_NO_SPEECH".into(), "0.8".into());
+        assert_eq!(config.asr_confidence_limits().unwrap(), (-1., 0.8));
     }
     #[test]
     fn bundled_helpers_are_preferred_and_explicit_overrides_win() {

@@ -46,34 +46,62 @@ pub fn rms(samples: &[i16]) -> f64 {
     (samples.iter().map(|&v| (v as f64).powi(2)).sum::<f64>() / samples.len() as f64).sqrt()
 }
 pub const CHUNK_MS: u64 = 50;
+fn speech_levels(samples: &[i16]) -> (f64, f64) {
+    if samples.is_empty() {
+        return (0., 0.);
+    }
+    let n = samples.len() as f64;
+    let mean = samples.iter().map(|&v| v as f64).sum::<f64>() / n;
+    let energy = samples
+        .iter()
+        .map(|&v| (v as f64 - mean).powi(2))
+        .sum::<f64>();
+    if energy <= f64::EPSILON {
+        return (0., 0.);
+    }
+    let level = (energy / n).sqrt();
+    // Feedback leaking from the speakers is tonal, not speech. Goertzel
+    // measures concentration at our three cue frequencies without an FFT.
+    for hz in [880., 660., 320.] {
+        let coefficient = 2. * (2. * std::f64::consts::PI * hz / RATE as f64).cos();
+        let (mut previous, mut before) = (0., 0.);
+        for &sample in samples {
+            let next = sample as f64 - mean + coefficient * previous - before;
+            before = previous;
+            previous = next;
+        }
+        let power = previous * previous + before * before - coefficient * previous * before;
+        if 2. * power / (n * energy) >= 0.65 {
+            return (level, 0.);
+        }
+    }
+    (level, level)
+}
+/// Per-chunk energy evidence after ambient-floor and cue-tone rejection.
+pub(crate) fn speech_candidates(samples: &[i16], threshold: f64) -> Vec<bool> {
+    let (mut quiet, chunks): (Vec<f64>, Vec<f64>) =
+        samples.chunks(CHUNK).map(speech_levels).unzip();
+    if chunks.is_empty() {
+        return Vec::new();
+    }
+    // Include noise above the absolute threshold when estimating the ambient floor.
+    let index = (quiet.len() / 10).min(quiet.len() - 1);
+    let (_, floor, _) = quiet.select_nth_unstable_by(index, f64::total_cmp);
+    let gate = threshold.max(*floor + (threshold * 0.5).max(*floor * 0.5));
+    chunks.into_iter().map(|level| level >= gate).collect()
+}
 /// Decide whether a recording contains speech worth uploading, and return the
 /// trimmed span. Two cheap guards keep silent/noisy releases off the network:
 /// an adaptive ambient floor (the quietest ~10% of 50 ms chunks) and a minimum
 /// contiguous-speech duration (`VOICE_MIN_SPEECH_MS`).
 pub fn trim(samples: &[i16], threshold: f64, min_speech_ms: u64) -> Option<&[i16]> {
-    let chunks: Vec<f64> = samples.chunks(CHUNK).map(rms).collect();
-    if chunks.is_empty() {
-        return None;
-    }
-    // Learn the ambient floor only from chunks below the threshold; if the whole
-    // recording is loud there is no silence to measure, so use the threshold.
-    let mut quiet: Vec<f64> = chunks.iter().copied().filter(|&r| r < threshold).collect();
-    let gate = if quiet.is_empty() {
-        threshold
-    } else {
-        let index = (quiet.len() / 10).min(quiet.len() - 1);
-        let (_, floor, _) = quiet.select_nth_unstable_by(index, f64::total_cmp);
-        let floor = *floor;
-        // Speech must clear the ambient floor by half the configured threshold,
-        // and never sit below the configured threshold itself.
-        threshold.max(floor + threshold * 0.5)
-    };
+    let chunks = speech_candidates(samples, threshold);
     let min_chunks = min_speech_ms.div_ceil(CHUNK_MS).max(2) as usize;
     // Require min_chunks contiguous chunks above the gate; reject clicks/breaths.
     let mut run = 0usize;
     let mut voiced = false;
-    for &level in &chunks {
-        run = if level >= gate { run + 1 } else { 0 };
+    for &candidate in &chunks {
+        run = if candidate { run + 1 } else { 0 };
         if run >= min_chunks {
             voiced = true;
             break;
@@ -82,8 +110,12 @@ pub fn trim(samples: &[i16], threshold: f64, min_speech_ms: u64) -> Option<&[i16
     if !voiced {
         return None;
     }
-    let first = chunks.iter().position(|&r| r >= gate)?.saturating_sub(6) * CHUNK;
-    let last = ((chunks.iter().rposition(|&r| r >= gate)? + 7) * CHUNK).min(samples.len());
+    let first = chunks
+        .iter()
+        .position(|&candidate| candidate)?
+        .saturating_sub(6)
+        * CHUNK;
+    let last = ((chunks.iter().rposition(|&candidate| candidate)? + 7) * CHUNK).min(samples.len());
     Some(&samples[first..last])
 }
 pub fn wav(samples: &[i16]) -> Vec<u8> {
@@ -168,6 +200,9 @@ pub fn record(c: &Config, control: &Control) -> Result<Vec<i16>> {
                 bail!("microphone capture ended unexpectedly");
             }
             if bytes.is_empty() {
+                // SteamOS can reset ADC gains when audio streams change. Repair
+                // them after this stream is open, before emitting the live cue.
+                restore_mic_gain(c, control)?;
                 // Signal the daemon that capture is live; it plays the start tone
                 // only once a committed recording can actually hear the user.
                 control.live.store(true, Ordering::SeqCst);
@@ -187,7 +222,43 @@ pub fn record(c: &Config, control: &Control) -> Result<Vec<i16>> {
         .map(|b| i16::from_le_bytes([b[0], b[1]]))
         .collect())
 }
+fn restore_mic_gain(c: &Config, control: &Control) -> Result<()> {
+    let helper = c.home.join(".local/share/frame-voice/mic-gain.sh");
+    if !helper.is_file() {
+        return Ok(());
+    }
+    let mut child = Process(
+        Command::new(helper)
+            .arg("--once")
+            .env("MIC_GAIN", c.get("MIC_GAIN", "120"))
+            .env("MIC_CARD", c.get("MIC_CARD", "0"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .context("start microphone gain setup")?,
+    );
+    let start = Instant::now();
+    loop {
+        if control.canceled() || control.stop.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        if let Some(status) = child.0.try_wait()? {
+            if !status.success() {
+                bail!("microphone gain setup failed");
+            }
+            return Ok(());
+        }
+        if start.elapsed() >= Duration::from_secs(2) {
+            bail!("microphone gain setup timed out");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
 pub fn beep(c: &Config, hz: f32) {
+    crate::feedback::beep(c, hz);
+}
+pub(crate) fn legacy_beep(c: &Config, hz: f32) {
     if !c.beep {
         return;
     }
@@ -215,7 +286,14 @@ pub fn beep(c: &Config, hz: f32) {
             None => vec![
                 (
                     "pw-play".into(),
-                    vec!["--raw", "--format=s16", "--rate=16000", "--channels=1", "-"],
+                    vec![
+                        "--raw",
+                        "--format=s16",
+                        "--rate=16000",
+                        "--channels=1",
+                        "--latency=20ms",
+                        "-",
+                    ],
                 ),
                 (
                     "paplay".into(),
@@ -264,9 +342,13 @@ mod tests {
     fn silence_click_trim_and_wave() {
         assert!(trim(&vec![0; CHUNK * 20], 300., 100).is_none());
         let mut pcm = vec![0; CHUNK * 30];
-        pcm[CHUNK * 12..CHUNK * 13].fill(1000);
+        for (i, sample) in pcm[CHUNK * 12..CHUNK * 13].iter_mut().enumerate() {
+            *sample = if i % 2 == 0 { 1000 } else { -1000 };
+        }
         assert!(trim(&pcm, 300., 100).is_none());
-        pcm[CHUNK * 13..CHUNK * 14].fill(1000);
+        for (i, sample) in pcm[CHUNK * 13..CHUNK * 14].iter_mut().enumerate() {
+            *sample = if i % 2 == 0 { 1000 } else { -1000 };
+        }
         let cut = trim(&pcm, 300., 100).unwrap();
         assert_eq!(cut.len(), CHUNK * 14);
         let out = wav(cut);
@@ -279,8 +361,39 @@ mod tests {
         assert!(trim(&vec![200; CHUNK * 20], 300., 100).is_none());
         // Speech over the same floor still passes.
         let mut pcm = vec![200; CHUNK * 20];
-        pcm[CHUNK * 8..CHUNK * 12].fill(1500);
+        for (i, sample) in pcm[CHUNK * 8..CHUNK * 12].iter_mut().enumerate() {
+            *sample = if i % 2 == 0 { 1500 } else { -1500 };
+        }
         assert!(trim(&pcm, 300., 100).is_some());
+    }
+    #[test]
+    fn dc_offset_loud_steady_noise_and_feedback_are_not_speech() {
+        assert!(trim(&vec![1000; CHUNK * 20], 300., 200).is_none());
+        let noise: Vec<_> = (0..CHUNK * 20)
+            .map(|i| if i % 2 == 0 { 800 } else { -800 })
+            .collect();
+        assert!(trim(&noise, 300., 200).is_none());
+        for hz in [880., 660., 320.] {
+            let mut pcm = vec![0; CHUNK * 6];
+            pcm.extend((0..CHUNK * 8).map(|i| {
+                (9000. * (2. * std::f64::consts::PI * hz * i as f64 / RATE as f64).sin()) as i16
+            }));
+            pcm.extend(vec![0; CHUNK * 6]);
+            assert!(trim(&pcm, 300., 200).is_none(), "cue {hz} passed");
+            // Real sound following the cue must still be retained.
+            pcm.extend((0..CHUNK * 8).map(|i| if i % 2 == 0 { 2000 } else { -2000 }));
+            assert!(trim(&pcm, 300., 200).is_some());
+        }
+    }
+    #[test]
+    fn cue_with_speaker_distortion_and_tail_is_not_speech() {
+        let mut pcm = vec![0; CHUNK * 10];
+        pcm.extend((0..CHUNK * 6).map(|i| {
+            let phase = std::f64::consts::TAU * 880. * i as f64 / RATE as f64;
+            (900. * phase.sin() + 500. * (2. * phase).sin()) as i16
+        }));
+        pcm.extend(vec![0; CHUNK * 10]);
+        assert!(trim(&pcm, 300., 200).is_none());
     }
     #[test]
     fn full_scale_does_not_overflow() {
