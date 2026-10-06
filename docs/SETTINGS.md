@@ -53,11 +53,11 @@ installed voice tools and their models are left alone.
 
 ### Transcription path
 
-| Choice | What you need | What to expect |
-| --- | --- | --- |
-| **Groq · Cloud** | Internet and a [Groq API key](https://console.groq.com/keys). | Speech is sent to Groq; no local model download is needed. |
-| **Local · Fast** | About 142 MiB for a model download. | Runs on your Frame and favors speed. |
-| **Local · Balanced** | About 466 MiB for a model download. | Runs on your Frame and favors accuracy over speed. |
+| Choice | Speed | What you need | What to expect |
+| --- | --- | --- | --- |
+| **Groq · Cloud** | Fastest | Internet and a [Groq API key](https://console.groq.com/keys). | Speech is sent to Groq; no local model download is needed. |
+| **Local · Fast** | Fast | About 142 MiB for a model download. | Runs on your Frame and favors speed. |
+| **Local · Balanced** | Slow | About 466 MiB for a model download. | Runs on your Frame and favors accuracy over speed. |
 
 Select a path, then **Save settings**. Local transcription works offline after
 its initial download. Switching to local retains your saved Groq API key so you

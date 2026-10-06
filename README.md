@@ -27,11 +27,11 @@ mode. Dictation is unavailable in the Steam interface and VR games.
 
 ## Choose transcription and language
 
-| Option | What you need | Why choose it |
-| --- | --- | --- |
-| **Groq · Cloud** | Internet and a [Groq API key](https://console.groq.com/keys) | Speech is sent to Groq for transcription; no local model download |
-| **Local · Fast** | A model download of about 142 MiB | Transcription runs on your Frame and works offline after setup |
-| **Local · Balanced** | A model download of about 466 MiB | Favors accuracy over speed and works offline after setup |
+| Option | Speed | What you need | Why choose it |
+| --- | --- | --- | --- |
+| **Groq · Cloud** | Fastest | Internet and a [Groq API key](https://console.groq.com/keys) | Speech is sent to Groq for transcription; no local model download |
+| **Local · Fast** | Fast | A model download of about 142 MiB | Transcription runs on your Frame and works offline after setup |
+| **Local · Balanced** | Slow | A model download of about 466 MiB | Favors accuracy over speed and works offline after setup |
 
 Choose **Language** in the Transcription tab, or **Automatic detection** if you
 use more than one language. Local setup downloads the appropriate English or
