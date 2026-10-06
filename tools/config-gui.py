@@ -16,6 +16,9 @@ from gi.repository import Adw, Gtk, GLib
 spec = importlib.util.spec_from_file_location('backend_setup', Path(__file__).with_name('setup-backend.py'))
 backend = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backend)
+update_spec = importlib.util.spec_from_file_location('frame_update_check', Path(__file__).with_name('update-check.py'))
+updates = importlib.util.module_from_spec(update_spec)
+update_spec.loader.exec_module(updates)
 CONFIG = Path.home()/'.config/frame-voice/env'
 SPECS = backend.SETTINGS
 
@@ -86,6 +89,15 @@ class ConfigApp(Adw.Application):
                     group.add(self.field(field))
                 page.append(group)
                 if name == 'general' and not self.setup:
+                    installed = updates.installed_info()
+                    version = installed['version']
+                    if installed['revision'] != 'unknown':
+                        version += ' · ' + installed['revision'][:7]
+                    about = Adw.PreferencesGroup(title='Updates', description='Installed: ' + version)
+                    self.update_button = Gtk.Button(label='Check for updates', halign=Gtk.Align.START)
+                    self.update_button.connect('clicked', self.check_updates)
+                    about.add(self.update_button)
+                    page.append(about)
                     spacer = Gtk.Box()
                     spacer.set_vexpand(True)
                     page.append(spacer)
@@ -321,6 +333,42 @@ class ConfigApp(Adw.Application):
                 self.update_dirty()
         dialog.connect('response', response)
         dialog.present()
+
+    def check_updates(self, *_):
+        self.update_button.set_sensitive(False)
+        def worker():
+            result = updates.check()
+            GLib.idle_add(self.show_updates, result)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def show_updates(self, result):
+        self.update_button.set_sensitive(True)
+        status = result['status']
+        heading = 'Update available' if status == 'available' else 'Up to date' if status == 'current' else 'Unable to check updates'
+        body = 'Installed: ' + result['installed']['version']
+        if 'latest' in result:
+            body += '\nLatest: ' + result['latest']
+        if status == 'unavailable':
+            body += '\n' + result['message']
+        elif status == 'available' and self.collect_settings() != self.saved_values:
+            body += '\nSave settings before updating.'
+        dialog = Adw.MessageDialog(transient_for=self.window, modal=True, heading=heading, body=body)
+        dialog.add_response('close', 'Close')
+        dialog.add_response('releases', 'Open releases')
+        if status == 'available':
+            dialog.add_response('update', 'Update…')
+            dialog.set_response_appearance('update', Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_response_enabled('update', not self.busy and self.collect_settings() == self.saved_values)
+        dialog.set_close_response('close')
+        def response(_, choice):
+            if choice == 'releases':
+                subprocess.Popen(['xdg-open', result['url']])
+            elif choice == 'update':
+                subprocess.Popen(['bash', str(Path(__file__).with_name('update.sh')), '--gui'])
+                self.quit()
+        dialog.connect('response', response)
+        dialog.present()
+        return False
 
     def confirm_uninstall(self, *_):
         dialog = Adw.MessageDialog(transient_for=self.window, modal=True, heading='Uninstall Frame Voice?', body='Dictation will stop. The app, tray, cached data, and installation backups will be removed. Choose what to keep:')

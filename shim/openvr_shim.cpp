@@ -387,6 +387,17 @@ extern "C" int fv_poll(uint8_t* active, uint8_t* state) {
     if (!input || !active || !state) return -4;
     return fv_poll_inputs(input, action_set, actions, active, state, touch_origin);
 }
+// Identify the controller that generated the currently pressed Clear action.
+extern "C" int fv_clear_hand() {
+    if (!input || !vr_system) return -1;
+    vr::InputDigitalActionData_t data = {};
+    if (input->GetDigitalActionData(actions[3], &data, sizeof(data), vr::k_ulInvalidInputValueHandle) != vr::VRInputError_None
+        || !data.bActive || !data.bState) return -1;
+    vr::InputOriginInfo_t origin = {};
+    if (input->GetOriginTrackedDeviceInfo(data.activeOrigin, &origin, sizeof(origin)) != vr::VRInputError_None) return -1;
+    const auto role = vr_system->GetControllerRoleForTrackedDeviceIndex(origin.trackedDeviceIndex);
+    return role == vr::TrackedControllerRole_LeftHand ? 0 : role == vr::TrackedControllerRole_RightHand ? 1 : -1;
+}
 // Whether the HMD pose is currently valid. Used to tell "SteamVR bindings have
 // not loaded" (HMD tracked, but no action active) apart from "the user is not
 // wearing the headset / controllers are idle", so the daemon does not restart in

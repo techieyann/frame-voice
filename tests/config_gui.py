@@ -85,6 +85,23 @@ class ConfigTests(unittest.TestCase):
         self.assertIn('CUSTOM_SETTING=kept', saved)
         self.assertEqual(self.config.stat().st_mode & 0o777, 0o600)
 
+    def test_update_check_is_read_only_and_update_waits_for_saved_settings(self):
+        result = {'status': 'available', 'installed': {'version': 'v0.1.0-development'},
+                  'latest': 'v0.1.0', 'url': 'https://github.com/techieyann/frame-voice/releases/tag/v0.1.0'}
+        self.app.show_updates(result)
+        dialog = next(window for window in Gtk.Window.get_toplevels()
+                      if isinstance(window, Adw.MessageDialog))
+        self.assertTrue(dialog.get_response_enabled('update'))
+        self.assertFalse(self.app.save_button.get_sensitive())
+        dialog.destroy()
+        fields = {widget.key: widget for widget in self.app.fields}
+        fields['VOICE_BEEP'].set_active(True)
+        self.app.show_updates(result)
+        dialog = next(window for window in Gtk.Window.get_toplevels()
+                      if isinstance(window, Adw.MessageDialog))
+        self.assertFalse(dialog.get_response_enabled('update'))
+        self.assertIn('Save settings', dialog.get_body())
+
     def test_save_disabled_until_changed_and_again_after_save(self):
         fields = {widget.key: widget for widget in self.app.fields}
         self.assertFalse(self.app.save_button.get_sensitive())

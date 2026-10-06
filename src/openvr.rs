@@ -13,6 +13,7 @@ static OWNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new
 #[cfg(feature = "openvr")]
 unsafe extern "C" {
     fn fv_open(library: *const std::ffi::c_char, manifest: *const std::ffi::c_char) -> i32;
+    fn fv_clear_hand() -> i32;
     fn fv_poll(active: *mut u8, state: *mut u8) -> i32;
     fn fv_hmd_tracked() -> i32;
     fn fv_notify(text: *const std::ffi::c_char) -> i32;
@@ -132,6 +133,21 @@ impl OpenVr {
         #[cfg(not(feature = "openvr"))]
         {
             false
+        }
+    }
+    pub fn clear_hand(&mut self) -> Option<usize> {
+        #[cfg(feature = "openvr")]
+        {
+            // SAFETY: called on the owning thread after the action-state update.
+            match unsafe { fv_clear_hand() } {
+                0 => Some(0),
+                1 => Some(1),
+                _ => None,
+            }
+        }
+        #[cfg(not(feature = "openvr"))]
+        {
+            None
         }
     }
     pub fn poll(&mut self) -> Result<Snapshot> {

@@ -33,7 +33,7 @@ def files(project, binaries, tray, sdk_license, runtime=None):
     source['bin/frame-voice-tray'] = tray
     for name in ('install.sh', 'install-gui.sh', 'rollback.sh', 'uninstall.sh'):
         source[name] = project / name
-    for name in ('local-install.py', 'tray-session.py', 'config-gui.py', 'config-gui.sh', 'config-gui-zenity.sh', 'setup-backend.py', 'setup-interface.py', 'mic-gain.sh'):
+    for name in ('local-install.py', 'tray-session.py', 'config-gui.py', 'config-gui.sh', 'config-gui-zenity.sh', 'setup-backend.py', 'setup-interface.py', 'update-check.py', 'update.sh', 'mic-gain.sh'):
         source['tools/' + name] = project / 'tools' / name
     for name in ('actions.json', 'frame_controller_binding.json', 'groq-prompt.txt'):
         source['assets/' + name] = project / 'assets' / name

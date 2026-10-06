@@ -89,6 +89,7 @@ and "cancel" or "never mind". Ordinary phrases remain text.
 | `GROQ_ASR_MIN_LOGPROB` | `-0.75` | Minimum Groq segment decoding score (closer to zero is stronger) |
 | `GROQ_ASR_MAX_NO_SPEECH` | `0.6` | Maximum Groq segment no-speech probability |
 | `VOICE_MIN_SPEECH_MS` | `200` | Contiguous speech required before transcription |
+| `VRBTN_CLEAR_B_SPACE` | `1` | Include the native space typed by right-hand B in Desktop Clear; disable for a customized B mapping |
 | `VRBTN_ARM_MS` | `150` | Hold threshold, milliseconds |
 | `VRBTN_TAP_MS` | `250` | Maximum first-tap duration, milliseconds |
 | `VRBTN_READY_MS` | `600` | Interval allowed before the second touch |
@@ -136,7 +137,10 @@ no-speech probability above `GROQ_ASR_MAX_NO_SPEECH`. These are diagnostic score
 not calibrated accuracy percentages. Missing scores retain the local audio gate.
 Debug logging includes numeric scores and decisions, never transcript text.
 
-Desktop clear counts the trailing separator too. Its count belongs to the
+Desktop clear counts the trailing separator too. For right-hand B with the default
+Steam layout, it also counts the space B itself types into Desktop. Other bindings
+and spoken Clear do not add that character. Set `VRBTN_CLEAR_B_SPACE=0` if your
+custom Steam B mapping does not type a space. Its count belongs to the
 running daemon, so a service restart resets that history. Test clear using a
 fresh dictation after changing settings or restarting the service.
 
@@ -156,3 +160,16 @@ journalctl --user -u frame-voice -n 50 --no-pager
 `--check` validates configuration and compiled OpenVR support, not credentials,
 network access or headset health. Focus changes cancel pending results; text
 already delivered cannot be recalled. Silence makes no transcription request.
+
+## Version and updates
+
+`frame-voice --version` and `--build-info` report the package version, source
+revision, dirty-source marker, and compiled OpenVR capability. Release metadata
+is trusted only when its source commit matches the binary. Unpackaged/local
+builds are shown as development versions.
+
+Use General → Check for updates, or `frame-voice --check-updates --json`.
+Checks compare stable release versions; they neither select experimental releases
+nor downgrade newer versions. The GUI's Update action opens the transactional
+installer after settings are saved. `~/.local/share/frame-voice/update.sh --tui`
+provides the terminal path. No background polling or automatic update is enabled.

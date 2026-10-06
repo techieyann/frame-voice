@@ -47,7 +47,7 @@ fn paste_keys(class: &str) -> Option<&'static [&'static str]> {
 /// Backspace exactly the characters frame-voice typed into a classless target
 /// (the nested Desktop). `Ctrl+A` + Delete is unsafe there because focus could
 /// be a file manager; deleting our own output is bounded and safe.
-fn clear_implanted(c: &Config, focus: Option<&Focus>) -> Result<()> {
+fn clear_implanted(c: &Config, focus: Option<&Focus>, controller_chars: usize) -> Result<()> {
     if !focus.is_some_and(|f| f.class.is_empty()) {
         return Ok(());
     }
@@ -58,7 +58,9 @@ fn clear_implanted(c: &Config, focus: Option<&Focus>) -> Result<()> {
     if count == 0 {
         return Ok(());
     }
-    eprintln!("classless clear: {count} backspaces");
+    // Include only a known native controller insertion, not an arbitrary retry.
+    let count = count.saturating_add(controller_chars);
+    eprintln!("classless clear: {count} backspaces (controller chars={controller_chars})");
     // KEY_BACKSPACE is code 14. Use the configured key delay so a long dictation
     // is not sent faster than the target app consumes keystrokes.
     let delay = c.get("YDOTOOL_KEY_DELAY", "2");
@@ -69,6 +71,23 @@ fn clear_implanted(c: &Config, focus: Option<&Focus>) -> Result<()> {
     }
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     run_ydotool(c, &refs)
+}
+/// A controller can type into Desktop independently of Frame Voice (B types a
+/// space in the default Steam layout). Undo that known insertion with our text.
+pub fn send_controller_clear_guarded(
+    c: &Config,
+    focus: Option<&Focus>,
+    controller_chars: usize,
+    mut valid: impl FnMut() -> bool,
+) -> Result<()> {
+    if !valid() {
+        bail!("focus changed before controller clear");
+    }
+    if focus.is_some_and(|f| f.class.is_empty()) {
+        clear_implanted(c, focus, controller_chars)
+    } else {
+        send_guarded(c, &Output::Clear, focus, valid)
+    }
 }
 /// Append a separator so consecutive dictations don't run together
 /// (`Hello.` + `world` -> `Hello. world`). `VOICE_TRAILING=none` disables it.
@@ -271,7 +290,7 @@ pub fn send_guarded(
     // Clear on the classless Desktop Backspaces our own typed output instead of
     // sending Ctrl+A + Delete, which could select and delete unrelated content.
     if matches!(output, Output::Clear) && classless {
-        return clear_implanted(c, focus);
+        return clear_implanted(c, focus, 0);
     }
     if let Output::Text(text) = output {
         if !text.is_ascii() && classless {

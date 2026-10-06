@@ -135,6 +135,8 @@ def payload(project, binary, tray, include_tray, home):
         add(project / 'tools/local-install.py', '.local/share/frame-voice/local-install.py')
         add(project / 'tools/setup-backend.py', '.local/share/frame-voice/setup-backend.py')
         add(project / 'tools/setup-interface.py', '.local/share/frame-voice/setup-interface.py')
+        add(project / 'tools/update-check.py', '.local/share/frame-voice/update-check.py')
+        add(project / 'tools/update.sh', '.local/share/frame-voice/update.sh', 0o755)
         add(tray, '.local/bin/frame-voice-tray', 0o755)
         add(project / 'tools/tray-session.py', '.local/share/frame-voice/tray-session.py', 0o755)
         add(project / 'tools/config-gui.sh', '.local/share/frame-voice/config-gui.sh', 0o755)

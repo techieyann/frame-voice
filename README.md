@@ -51,7 +51,9 @@ Firefox. These characters are not yet supported inside the nested Desktop.
 
 Click the joystick during recording to cancel. After text appears, **A** submits
 and releasing **B** clears; the left D-pad right/left do the same. Submit and clear are
-available briefly after dictation and stop when you change focus. Nothing submits
+available briefly after dictation and stop when you change focus. Default Desktop
+B also inserts a space; Frame Voice includes that space when clearing. Disable
+**B also types a space in Desktop** if you customize Steam’s B mapping. Nothing submits
 automatically.
 
 ## Change settings or free space
@@ -93,6 +95,17 @@ tone. Wait for the tone before speaking.
 Quiet recordings are checked for voice before transcription. Room noise and
 cue tones should cancel without inserting text. Groq results with weak decoding
 or high no-speech scores also cancel; genuine short phrases remain valid.
+
+## Updates
+
+Open **Configure… → General → Check for updates** to see your installed version
+and the latest stable release. Save pending settings first, then choose **Update…**
+to open the installer. Updates preserve saved configuration, API keys, and models.
+Checks happen only when requested.
+
+For terminal use, `frame-voice --version` shows the version and build revision;
+`frame-voice --check-updates --json` returns machine-readable update status.
+Run `~/.local/share/frame-voice/update.sh --tui` for a guided terminal update.
 
 ## If something does not work
 

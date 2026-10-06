@@ -135,6 +135,7 @@ SETTINGS = {
         ('VRBTN_DICTATE_RIGHT', 'Right hand dictation', 'bool', None, True),
         ('VRBTN_SUBMIT_RIGHT', 'Right submit button', 'enum', ['a', 'b', 'x', 'y', 'none'], 'a'),
         ('VRBTN_CLEAR_RIGHT', 'Right clear button', 'enum', ['a', 'b', 'x', 'y', 'none'], 'b'),
+        ('VRBTN_CLEAR_B_SPACE', 'B also types a space in Desktop', 'bool', None, True),
         ('VRBTN_DICTATE_LEFT', 'Left hand dictation', 'bool', None, True),
         ('VRBTN_SUBMIT_LEFT', 'Left submit button', 'enum', ['dpad_up', 'dpad_down', 'dpad_left', 'dpad_right', 'none'], 'dpad_right'),
         ('VRBTN_CLEAR_LEFT', 'Left clear button', 'enum', ['dpad_up', 'dpad_down', 'dpad_left', 'dpad_right', 'none'], 'dpad_left'),

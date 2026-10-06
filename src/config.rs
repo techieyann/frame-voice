@@ -88,6 +88,7 @@ impl Config {
             bail!("VOICE_MIN_SPEECH_MS must be 100..5000 ms");
         }
         c.boolean("VOICE_NOTIFY", true)?;
+        c.boolean("VRBTN_CLEAR_B_SPACE", true)?;
         for key in [
             "VOICE_WARN_REQUESTS",
             "VOICE_WARN_TOKENS",

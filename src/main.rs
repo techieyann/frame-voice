@@ -88,8 +88,19 @@ fn armed(until: Option<Instant>, now: Instant) -> bool {
 }
 struct PendingClear {
     focus: Snapshot,
+    controller_chars: usize,
     deadline: Instant,
     released_at: Option<Instant>,
+}
+fn controller_clear_chars(c: &Config, hand: Option<usize>, target: &Snapshot) -> usize {
+    usize::from(
+        hand == Some(1)
+            && c.get("VRBTN_CLEAR_RIGHT", "b")
+                .trim()
+                .eq_ignore_ascii_case("b")
+            && c.boolean("VRBTN_CLEAR_B_SPACE", true).unwrap_or(true)
+            && target.focus.as_ref().is_some_and(|f| f.class.is_empty()),
+    )
 }
 fn take_released_clear(
     pending: &mut Option<PendingClear>,
@@ -97,7 +108,7 @@ fn take_released_clear(
     available: bool,
     held: bool,
     current: &Snapshot,
-) -> Option<Snapshot> {
+) -> Option<(Snapshot, usize)> {
     let action = pending.as_mut()?;
     if !available
         || now >= action.deadline
@@ -117,7 +128,9 @@ fn take_released_clear(
     if now.saturating_duration_since(released) < Duration::from_millis(30) {
         return None;
     }
-    pending.take().map(|action| action.focus)
+    pending
+        .take()
+        .map(|action| (action.focus, action.controller_chars))
 }
 struct Job {
     feedback: Option<frame_voice::feedback::Lease>,
@@ -700,7 +713,13 @@ fn daemon(c: Config) -> Result<()> {
                             // The same B press reaches the Desktop too. Inject
                             // only after release so its first Backspace isn't
                             // consumed by controller/keyboard focus switching.
+                            let hand = vr.clear_hand();
+                            let controller_chars = controller_clear_chars(&c, hand, &now);
+                            if debug {
+                                eprintln!("controller clear prepared: hand={hand:?}; native_chars={controller_chars}");
+                            }
                             pending_clear = Some(PendingClear {
+                                controller_chars,
                                 focus: now,
                                 deadline: Instant::now() + Duration::from_secs(5),
                                 released_at: None,
@@ -719,7 +738,7 @@ fn daemon(c: Config) -> Result<()> {
         } else {
             actions_armed_until = None;
         }
-        if let Some(target) = take_released_clear(
+        if let Some((target, controller_chars)) = take_released_clear(
             &mut pending_clear,
             Instant::now(),
             snapshot.active[3] != 0,
@@ -729,9 +748,12 @@ fn daemon(c: Config) -> Result<()> {
             if debug {
                 eprintln!("controller clear: released and settled");
             }
-            if let Err(e) = inject::send_guarded(&c, &Output::Clear, target.focus.as_ref(), || {
-                context.matches(&target)
-            }) {
+            if let Err(e) = inject::send_controller_clear_guarded(
+                &c,
+                target.focus.as_ref(),
+                controller_chars,
+                || context.matches(&target),
+            ) {
                 eprintln!("controller clear: {e}");
             }
         }
@@ -816,16 +838,30 @@ fn daemon(c: Config) -> Result<()> {
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     // Installer capability check works before first-run credentials/config exist.
-    if args == ["--build-info"] {
+    if args == ["--build-info"] || args == ["--version"] {
         println!(
-            "frame-voice {}; OpenVR compiled={}",
+            "frame-voice {}; revision={}; dirty={}; OpenVR compiled={}",
             env!("CARGO_PKG_VERSION"),
+            env!("FRAME_VOICE_BUILD_REVISION"),
+            env!("FRAME_VOICE_BUILD_DIRTY"),
             cfg!(feature = "openvr")
         );
         return Ok(());
     }
+    if args.first().is_some_and(|arg| arg == "--check-updates") {
+        let home = std::env::var_os("HOME").context("HOME is required")?;
+        let helper = Path::new(&home).join(".local/share/frame-voice/update-check.py");
+        if !helper.is_file() {
+            bail!("Update helper is not installed; run tools/update-check.py from the source checkout");
+        }
+        let status = std::process::Command::new("python3")
+            .arg(helper)
+            .args(&args[1..])
+            .status()?;
+        std::process::exit(status.code().unwrap_or(1));
+    }
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("frame-voice [--no-beep] [--no-cleanup]\nframe-voice --text TEXT [--dry-run]\nframe-voice --record-only PATH\nframe-voice --check\n\nDefault: Linux OpenVR daemon. --text is literal (never spoken commands).\nConfig: ~/.config/frame-voice/env; see README.md for build and deployment.");
+        println!("frame-voice [--no-beep] [--no-cleanup]\nframe-voice --text TEXT [--dry-run]\nframe-voice --record-only PATH\nframe-voice --check\nframe-voice --version\nframe-voice --check-updates [--json]\n\nDefault: Linux OpenVR daemon. --text is literal (never spoken commands).\nConfig: ~/.config/frame-voice/env; see README.md for build and deployment.");
         return Ok(());
     }
     let mut c = Config::load()?;
@@ -1010,6 +1046,40 @@ mod tests {
         );
     }
     #[test]
+    fn controller_space_is_only_accounted_for_right_b_in_desktop() {
+        let mut config = Config {
+            home: Default::default(),
+            values: Default::default(),
+            max_seconds: 30.,
+            threshold: 300.,
+            cleanup: true,
+            beep: true,
+            paste_chunk: 0,
+            min_speech_ms: 200,
+        };
+        let mut target = Snapshot {
+            revision: 1,
+            focus: Some(frame_voice::context::Focus {
+                display: ":0".into(),
+                window: 1,
+                class: String::new(),
+            }),
+        };
+        assert_eq!(controller_clear_chars(&config, Some(1), &target), 1);
+        assert_eq!(controller_clear_chars(&config, Some(0), &target), 0);
+        assert_eq!(controller_clear_chars(&config, None, &target), 0);
+        config
+            .values
+            .insert("VRBTN_CLEAR_B_SPACE".into(), "0".into());
+        assert_eq!(controller_clear_chars(&config, Some(1), &target), 0);
+        config.values.clear();
+        config.values.insert("VRBTN_CLEAR_RIGHT".into(), "x".into());
+        assert_eq!(controller_clear_chars(&config, Some(1), &target), 0);
+        config.values.clear();
+        target.focus.as_mut().unwrap().class = "firefox".into();
+        assert_eq!(controller_clear_chars(&config, Some(1), &target), 0);
+    }
+    #[test]
     fn clear_waits_for_release_and_settle_and_cancels_on_stale_context() {
         let now = Instant::now();
         let focus = Snapshot {
@@ -1022,6 +1092,7 @@ mod tests {
         };
         let new_action = || {
             Some(PendingClear {
+                controller_chars: 0,
                 focus: focus.clone(),
                 deadline: now + Duration::from_secs(5),
                 released_at: None,

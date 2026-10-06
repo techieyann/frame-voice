@@ -237,9 +237,21 @@ fn desktop_clear_counts_the_appended_separator() {
         .unwrap()
         .ends_with("hello \n"));
     inject::send(&c, &Output::Clear, Some(&focus)).unwrap();
-    let keys = fs::read_to_string(arguments).unwrap();
+    let keys = fs::read_to_string(&arguments).unwrap();
     assert_eq!(keys.lines().filter(|&line| line == "14:1").count(), 6);
     assert_eq!(keys.lines().filter(|&line| line == "14:0").count(), 6);
+    // Default Desktop B inserts an additional space before triggering Clear.
+    inject::send(&c, &Output::Text("hello".into()), Some(&focus)).unwrap();
+    inject::send_controller_clear_guarded(&c, Some(&focus), 1, || true).unwrap();
+    let keys = fs::read_to_string(&arguments).unwrap();
+    assert_eq!(keys.lines().filter(|&line| line == "14:1").count(), 7);
+    assert_eq!(keys.lines().filter(|&line| line == "14:0").count(), 7);
+    fs::remove_file(&arguments).unwrap();
+    inject::send_controller_clear_guarded(&c, Some(&focus), 1, || true).unwrap();
+    assert!(
+        !arguments.exists(),
+        "no owned text: don't delete a controller character alone"
+    );
 }
 #[test]
 fn capture_and_injection_failures_propagate() {

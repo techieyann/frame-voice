@@ -1,4 +1,39 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=FRAME_VOICE_BUILD_REVISION");
+    println!("cargo:rerun-if-env-changed=FRAME_VOICE_BUILD_DIRTY");
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    let revision = std::env::var("FRAME_VOICE_BUILD_REVISION")
+        .ok()
+        .or_else(|| git(&["rev-parse", "HEAD"]))
+        .filter(|value| value.len() == 40 && value.bytes().all(|b| b.is_ascii_hexdigit()))
+        .unwrap_or_else(|| "unknown".into());
+    let dirty = std::env::var("FRAME_VOICE_BUILD_DIRTY").unwrap_or_else(|_| {
+        if git(&["status", "--porcelain"]).is_some_and(|status| !status.is_empty()) {
+            "true"
+        } else {
+            "false"
+        }
+        .into()
+    });
+    println!("cargo:rustc-env=FRAME_VOICE_BUILD_REVISION={revision}");
+    println!("cargo:rustc-env=FRAME_VOICE_BUILD_DIRTY={dirty}");
+    for item in ["HEAD", "index", "packed-refs"] {
+        if let Some(path) = git(&["rev-parse", "--git-path", item]) {
+            println!("cargo:rerun-if-changed={path}");
+        }
+    }
+    if let Some(reference) = git(&["symbolic-ref", "-q", "HEAD"]) {
+        if let Some(path) = git(&["rev-parse", "--git-path", &reference]) {
+            println!("cargo:rerun-if-changed={path}");
+        }
+    }
     println!("cargo:rerun-if-changed=shim/openvr_shim.cpp");
     println!("cargo:rerun-if-changed=shim/badge_icons.h");
     println!("cargo:rerun-if-changed=shim/input_poll.h");
