@@ -27,14 +27,13 @@ mode. Dictation is unavailable in the Steam interface and VR games.
 
 ## Choose transcription and language
 
-| Transcription option | Speed | Internet needed | Model download |
+| Transcription option | Speed | Internet needed | Requirements |
 | --- | --- | --- | --- |
-| **Groq · Cloud** | Fastest | Every dictation | None |
-| **Local · Fast** | Fast | Initial download only | About 142 MiB |
-| **Local · Balanced** | Slow | Initial download only | About 466 MiB |
+| **Groq · Cloud** | Fastest | Every dictation | [API key](https://console.groq.com/keys) |
+| **Local · Fast** | Fast | Initial download only | ~142MiB |
+| **Local · Balanced** | Slow | Initial download only | ~466MiB |
 
-Groq requires a [Groq API key](https://console.groq.com/keys). The local options
-process speech on your Frame; the larger model favors accuracy.
+The local options process speech on your Frame; the larger model favors accuracy.
 
 Choose **Language** in the Transcription tab, or **Automatic detection** if you
 use more than one language. Local setup downloads the appropriate English or
