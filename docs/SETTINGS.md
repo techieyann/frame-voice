@@ -16,7 +16,7 @@ settings and restarts dictation, so finish any recording first.
 | **Separator after dictation** | Space keeps consecutive dictations from running together. None adds no separator. |
 | **Maximum recording seconds** | Limits each recording; the default is 30 seconds. |
 
-The tray shows a blue microphone while dictation runs and a red crossed-out
+The tray shows a white microphone while dictation runs and a white crossed-out
 microphone when paused. Use the tray's start/resume or pause options to control it.
 In the headset, the small microphone waits for audio startup, then grows toward
 the start tone. Wait for the tone before speaking. Release the joystick cap to
@@ -76,7 +76,7 @@ other languages and automatic detection use a multilingual model. Changing this
 selection may require another download.
 
 For accented characters and non-Latin scripts, use a clipboard-compatible
-standalone app such as Firefox. Nested Desktop typing currently supports ASCII.
+standalone app such as Firefox. Typing inside Desktop currently supports ASCII.
 Controller buttons work independently of the transcription language; spoken
 submit/clear command aliases remain English.
 
@@ -123,15 +123,16 @@ Choose **None** to disable a particular action. Save to apply new bindings.
 | **Either joystick cap** | Touch briefly, release, then touch and hold to record. |
 | **Joystick click during recording** | Cancel the recording. |
 | **Right A / left D-pad Right** | Submit after text appears. |
-| **Right B / left D-pad Left** | Clear after text appears, when the button is released. |
+| **Right X / left D-pad Left** | Clear after text appears, when the button is released. |
 
 Submit and clear are available for ten seconds after successful dictation and
 stop when focus changes. A plain joystick hold does not start recording.
 
 ### B's Desktop space
 
-In Steam's default Desktop layout, B also types a space. Leave **B also types a
-space in Desktop** enabled to include that extra character when clearing.
+The default Clear button is X, which does not type an extra character. If you
+choose B instead, Steam's default Desktop layout also types a space. Leave
+**B also types a space in Desktop** enabled to include that extra character when clearing.
 Disable it if your custom Steam B mapping does not type a space. This adjustment
 applies to right-hand B in Desktop; spoken Clear and other bindings keep their
 own behavior.
@@ -143,6 +144,6 @@ editing the text yourself can also invalidate the tracked count.
 
 ## More detail
 
-See [installation and removal](INSTALLATION.md) for installer and rollback
-instructions, or the [configuration reference](CONFIGURATION.md) for terminal
-commands, advanced settings, and troubleshooting.
+See [troubleshooting](TROUBLESHOOTING.md) if dictation is not working, or
+[uninstalling Frame Voice](UNINSTALL.md) for removal and retention choices.
+Advanced configuration belongs in the [developer guide](DEVELOPMENT.md).

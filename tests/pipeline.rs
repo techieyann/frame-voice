@@ -236,10 +236,18 @@ fn desktop_clear_counts_the_appended_separator() {
     assert!(fs::read_to_string(&arguments)
         .unwrap()
         .ends_with("hello \n"));
-    inject::send(&c, &Output::Clear, Some(&focus)).unwrap();
+    inject::send_controller_clear_guarded(&c, Some(&focus), 0, || true).unwrap();
     let keys = fs::read_to_string(&arguments).unwrap();
     assert_eq!(keys.lines().filter(|&line| line == "14:1").count(), 6);
     assert_eq!(keys.lines().filter(|&line| line == "14:0").count(), 6);
+    // With no separator, default X must remove exactly the five typed letters.
+    c.values.insert("VOICE_TRAILING".into(), "none".into());
+    inject::send(&c, &Output::Text("hello".into()), Some(&focus)).unwrap();
+    inject::send_controller_clear_guarded(&c, Some(&focus), 0, || true).unwrap();
+    let keys = fs::read_to_string(&arguments).unwrap();
+    assert_eq!(keys.lines().filter(|&line| line == "14:1").count(), 5);
+    assert_eq!(keys.lines().filter(|&line| line == "14:0").count(), 5);
+    c.values.remove("VOICE_TRAILING");
     // Default Desktop B inserts an additional space before triggering Clear.
     inject::send(&c, &Output::Text("hello".into()), Some(&focus)).unwrap();
     inject::send_controller_clear_guarded(&c, Some(&focus), 1, || true).unwrap();

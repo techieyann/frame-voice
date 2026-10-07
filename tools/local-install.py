@@ -143,8 +143,8 @@ def payload(project, binary, tray, include_tray, home):
         add(project / 'tools/config-gui.py', '.local/share/frame-voice/config-gui.py', 0o755)
         add(project / 'tools/config-gui-zenity.sh', '.local/share/frame-voice/config-gui-zenity.sh', 0o755)
         add(project / 'systemd/frame-voice-tray-session.service', '.config/systemd/user/frame-voice-tray-session.service')
-        for name, state in [('microphone.svg', 'active'), ('cancelled-microphone.svg', 'stopped'),
-                            ('gear.svg', 'processing'), ('cancelled-microphone.svg', 'failed')]:
+        for name, state in [('tray-microphone.svg', 'active'), ('tray-muted-microphone.svg', 'stopped'),
+                            ('tray-microphone.svg', 'processing'), ('tray-muted-microphone.svg', 'failed')]:
             add(project / 'assets/icons' / name, f'.local/share/frame-voice/tray-icons/frame-voice-{state}.svg')
     if not (home / CONFIG).exists():
         files[CONFIG] = (EXAMPLE, 0o600)

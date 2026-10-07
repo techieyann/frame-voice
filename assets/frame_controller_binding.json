@@ -12,7 +12,7 @@
         { "inputs": { "click": { "output": "/actions/voicedict/in/submit" } },
           "mode": "button", "path": "/user/hand/right/input/a" },
         { "inputs": { "click": { "output": "/actions/voicedict/in/clear" } },
-          "mode": "button", "path": "/user/hand/right/input/b" },
+          "mode": "button", "path": "/user/hand/right/input/x" },
         { "inputs": { "click": { "output": "/actions/voicedict/in/submit" } },
           "mode": "button", "path": "/user/hand/left/input/dpad_right" },
         { "inputs": { "click": { "output": "/actions/voicedict/in/clear" } },

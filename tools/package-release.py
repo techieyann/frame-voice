@@ -37,7 +37,7 @@ def files(project, binaries, tray, sdk_license, runtime=None):
         source['tools/' + name] = project / 'tools' / name
     for name in ('actions.json', 'frame_controller_binding.json', 'groq-prompt.txt'):
         source['assets/' + name] = project / 'assets' / name
-    for name in ('microphone.svg', 'cancelled-microphone.svg', 'gear.svg'):
+    for name in ('microphone.svg', 'cancelled-microphone.svg', 'gear.svg', 'tray-microphone.svg', 'tray-muted-microphone.svg'):
         source['assets/icons/' + name] = project / 'assets/icons' / name
     for name in ('frame-voice.service', 'frame-voice-tray-session.service', 'frame-voice-input.service', 'frame-voice-mixer.service'):
         source['systemd/' + name] = project / 'systemd' / name

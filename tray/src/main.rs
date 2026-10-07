@@ -64,9 +64,8 @@ mod desktop {
         }
         fn icon_pixmap(&self) -> Vec<ksni::Icon> {
             let data: &[u8] = match self.state.active.as_str() {
-                "active" => include_bytes!("../../assets/icons/frame-voice-active.argb"),
-                "activating" | "reloading" => {
-                    include_bytes!("../../assets/icons/frame-voice-processing.argb")
+                "active" | "activating" | "reloading" => {
+                    include_bytes!("../../assets/icons/frame-voice-active.argb")
                 }
                 _ => include_bytes!("../../assets/icons/frame-voice-stopped.argb"),
             };

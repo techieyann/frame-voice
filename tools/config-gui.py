@@ -147,6 +147,10 @@ class ConfigApp(Adw.Application):
         for widget in self.fields:
             signal = 'notify::active' if widget.kind == 'bool' else 'notify::selected' if widget.kind == 'enum' else 'notify::text'
             widget.connect(signal, self.update_dirty)
+        controls = {widget.key: widget for widget in self.fields}
+        if 'VRBTN_CLEAR_RIGHT' in controls:
+            controls['VRBTN_CLEAR_RIGHT'].connect('notify::selected', self.update_controller_options)
+        self.update_controller_options()
         for widget in (self.backend_choice, self.language_choice):
             widget.connect('notify::selected', self.update_dirty)
         self.update_dirty()
@@ -176,6 +180,13 @@ class ConfigApp(Adw.Application):
         widget.key, widget.kind = key, kind
         self.fields.append(widget)
         return widget
+
+    def update_controller_options(self, *_):
+        controls = {widget.key: widget for widget in self.fields}
+        choice = controls.get('VRBTN_CLEAR_RIGHT')
+        row = controls.get('VRBTN_CLEAR_B_SPACE')
+        if choice is not None and row is not None:
+            row.set_visible(choice.options[choice.get_selected()] == 'b')
 
     def transcription_page(self, page):
         choices = Adw.PreferencesGroup(title='Transcription', description='Choose where your speech is transcribed.')

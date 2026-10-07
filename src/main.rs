@@ -95,7 +95,7 @@ struct PendingClear {
 fn controller_clear_chars(c: &Config, hand: Option<usize>, target: &Snapshot) -> usize {
     usize::from(
         hand == Some(1)
-            && c.get("VRBTN_CLEAR_RIGHT", "b")
+            && c.get("VRBTN_CLEAR_RIGHT", "x")
                 .trim()
                 .eq_ignore_ascii_case("b")
             && c.boolean("VRBTN_CLEAR_B_SPACE", true).unwrap_or(true)
@@ -263,7 +263,7 @@ fn write_controller_binding(c: &Config, manifest: &str) -> Result<()> {
     if let Some(name) = pick("VRBTN_SUBMIT_RIGHT", "a", &right_buttons) {
         sources.push(button("right", &name, "/actions/voicedict/in/submit"));
     }
-    if let Some(name) = pick("VRBTN_CLEAR_RIGHT", "b", &right_buttons) {
+    if let Some(name) = pick("VRBTN_CLEAR_RIGHT", "x", &right_buttons) {
         sources.push(button("right", &name, "/actions/voicedict/in/clear"));
     }
     let doc = serde_json::json!({
@@ -391,7 +391,7 @@ fn daemon(c: Config) -> Result<()> {
         thread::sleep(Duration::from_millis(500));
     }
     eprintln!("OpenVR controller bindings active");
-    eprintln!("frame-voice ready: cap tap then hold; A submit; B clear");
+    eprintln!("frame-voice ready: cap tap then hold; A submit; X clear");
     while !SHUTDOWN.load(Ordering::SeqCst) {
         retired.retain(|j| !j.worker.is_finished());
         // Deliver usage warnings through OpenVR so they appear in the headset /
@@ -713,7 +713,15 @@ fn daemon(c: Config) -> Result<()> {
                             // The same B press reaches the Desktop too. Inject
                             // only after release so its first Backspace isn't
                             // consumed by controller/keyboard focus switching.
-                            let hand = vr.clear_hand();
+                            let hand = if c
+                                .get("VRBTN_CLEAR_RIGHT", "x")
+                                .trim()
+                                .eq_ignore_ascii_case("b")
+                            {
+                                vr.clear_hand()
+                            } else {
+                                None
+                            };
                             let controller_chars = controller_clear_chars(&c, hand, &now);
                             if debug {
                                 eprintln!("controller clear prepared: hand={hand:?}; native_chars={controller_chars}");
@@ -1065,6 +1073,8 @@ mod tests {
                 class: String::new(),
             }),
         };
+        assert_eq!(controller_clear_chars(&config, Some(1), &target), 0);
+        config.values.insert("VRBTN_CLEAR_RIGHT".into(), "b".into());
         assert_eq!(controller_clear_chars(&config, Some(1), &target), 1);
         assert_eq!(controller_clear_chars(&config, Some(0), &target), 0);
         assert_eq!(controller_clear_chars(&config, None, &target), 0);
