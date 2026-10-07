@@ -43,6 +43,8 @@ multilingual model. Groq needs no language-specific download.
 
 ## Try your first dictation
 
+<img src="assets/icons/dictation-flow.svg" width="720" alt="Tap, hold, speak, release, processing, text appears" />
+
 1. Open Firefox, start a new tab, and click its address bar.
 2. Briefly touch either joystick cap, lift your thumb, then touch it again and hold.
 3. Wait for the start tone and microphone badge, then speak.
