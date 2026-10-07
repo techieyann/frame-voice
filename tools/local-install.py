@@ -62,7 +62,7 @@ GROQ_API_KEY=
 # VOICE_WARN_COOLDOWN_SEC=3600
 #
 # == Local ASR  (VOICE_BACKEND=local) ==
-# VOICE_MODEL=/home/steamos/.local/share/whisper/models/ggml-base.en.bin
+# VOICE_MODEL=~/.local/share/whisper/models/ggml-base.en.bin
 # WHISPER_BIN=whisper-cli
 # VOICE_THREADS=4
 '''
