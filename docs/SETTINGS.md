@@ -53,13 +53,13 @@ installed voice tools and their models are left alone.
 
 ### Transcription path
 
-| Transcription option | Speed | Internet needed | Requirements |
-| --- | --- | --- | --- |
-| **Groq · Cloud** | Fastest | Every dictation | [API key](https://console.groq.com/keys) |
-| **Local · Fast** | Fast | Initial download only | ~142MiB |
-| **Local · Balanced** | Slow | Initial download only | ~466MiB |
+| Model | Runs on | Speed | Accuracy | Internet needed | Requirements |
+| --- | --- | --- | --- | --- | --- |
+| Whisper Base | Local | Medium | Iffy | Initial download only | ~142MiB |
+| Whisper Small | Local | Slow | Good | Initial download only | ~466MiB |
+| Whisper Large v3 Turbo | Groq | Fast | Best | Every dictation | [API key](https://console.groq.com/keys) |
 
-The local options process speech on your Frame; the larger model favors accuracy.
+Whisper models were created by [OpenAI](https://github.com/openai/whisper). Local transcription sends no audio to OpenAI or Groq; the models run on your Frame using [whisper.cpp](https://github.com/ggml-org/whisper.cpp).
 
 Select a path, then **Save settings**. Local transcription works offline after
 its initial download. Switching to local retains your saved Groq API key so you
