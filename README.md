@@ -49,9 +49,9 @@ multilingual model. Groq needs no language-specific download.
 4. Lift your thumb to finish. Wait for the transcription to appear.
 
 Click the joystick during recording to cancel. After text appears, **A** submits
-and releasing **X** clears; the left D-pad right/left do the same. These actions are
-available briefly after dictation and stop when you change focus. Nothing submits
-automatically.
+and **X** clears. On the left hand, **D-pad Right** submits and **D-pad Left** clears.
+These actions are available briefly after dictation and stop when you change
+focus. Nothing submits automatically.
 
 Open **Configure…** in the tray to customize Frame Voice. See the
 [settings guide](docs/SETTINGS.md) for the General, Transcription, and Controllers tabs.
